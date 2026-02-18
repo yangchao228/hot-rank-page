@@ -1,0 +1,21 @@
+services:
+  hot-rank:
+    build: .
+    image: hot-rank-page:latest
+    ports:
+      - "6688:6688"
+    environment:
+      NODE_ENV: production
+      PORT: 6688
+      UPSTREAM_BASE_URL: https://api-hot.imsyy.top
+      CACHE_TTL_SECONDS: 300
+      CACHE_STALE_SECONDS: 1800
+      REQUEST_TIMEOUT_MS: 6000
+      RETRY_TIMES: 2
+      CIRCUIT_FAIL_THRESHOLD: 3
+      CIRCUIT_COOLDOWN_MS: 30000
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 120
+      AGGREGATE_RATE_LIMIT_MAX: 30
+      USE_REDIS: "false"
+    restart: unless-stopped
