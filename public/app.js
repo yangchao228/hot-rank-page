@@ -48,14 +48,40 @@ function formatTime(value) {
 }
 
 function buildItemMeta(item, feed) {
+  const hiddenDescSources = new Set(["zhihu", "douyin", "kuaishou"]);
   const timeText = formatTime(item.timestamp || feed.updateTime);
   const normalizedTime = timeText === "-" ? "时间未知" : timeText;
-  const parts = [];
-  if (item.hot !== undefined && item.hot !== null && String(item.hot).trim() !== "") {
-    parts.push(`热度 ${item.hot}`);
+  const parts = [`时间 ${normalizedTime}`];
+  const shouldShowDesc = item.desc && !hiddenDescSources.has(item.source || feed.source);
+  if (shouldShowDesc) {
+    parts.unshift(item.desc);
   }
-  parts.push(`时间 ${normalizedTime}`);
   return parts.join(" · ");
+}
+
+function renderTabs(categories) {
+  categoryTabs.innerHTML = "";
+  const allTab = document.createElement("button");
+  allTab.className = `tab${selectedCategory === "全部" ? " active" : ""}`;
+  allTab.textContent = "全部";
+  allTab.addEventListener("click", () => {
+    selectedCategory = "全部";
+    renderTabs(categories);
+    renderBoard();
+  });
+  categoryTabs.appendChild(allTab);
+
+  categories.forEach((category) => {
+    const tab = document.createElement("button");
+    tab.className = `tab${selectedCategory === category ? " active" : ""}`;
+    tab.textContent = category;
+    tab.addEventListener("click", () => {
+      selectedCategory = category;
+      renderTabs(categories);
+      renderBoard();
+    });
+    categoryTabs.appendChild(tab);
+  });
 }
 
 function buildItemDesc(item, feed) {
@@ -179,11 +205,27 @@ function renderBoard() {
       return;
     }
 
-    if (!hasItems) {
-      card.appendChild(createStateBlock("empty", "暂无数据"));
-      grid.appendChild(card);
-      return;
-    }
+      const feed = feeds.get(source.id);
+      if (!feed || feed.error || !Array.isArray(feed.items) || feed.items.length === 0) {
+        return;
+      }
+      feed.items.forEach((item) => {
+        const row = document.createElement("li");
+        row.className = "source-item";
+
+        const link = document.createElement("a");
+        link.href = item.url || item.mobileUrl || "#";
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = item.title || "(untitled)";
+
+        const meta = document.createElement("span");
+        meta.textContent = buildItemMeta(item, feed);
+
+        row.appendChild(link);
+        row.appendChild(meta);
+        list.appendChild(row);
+      });
 
     feed.items.forEach((item, index) => {
       const row = document.createElement("li");

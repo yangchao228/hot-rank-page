@@ -18,11 +18,6 @@ import { fetchZhihuHotList } from "./local/zhihu.js";
 import { fetchDouyinHotList } from "./local/douyin.js";
 import { fetchKuaishouHotList } from "./local/kuaishou.js";
 import { fetchWeiboHotList } from "./local/weibo.js";
-import { fetchBaiduHotList } from "./local/baidu.js";
-import { fetchBilibiliHotList } from "./local/bilibili.js";
-import { fetch36KrHotList } from "./local/kr36.js";
-import { fetchToutiaoHotList } from "./local/toutiao.js";
-import { fetchV2exHotList } from "./local/v2ex.js";
 import { buildRssXml } from "../utils/rss.js";
 
 interface HotServiceDeps {
@@ -46,6 +41,12 @@ interface CompatRssResult {
 export type CompatResult = CompatJsonResult | CompatRssResult;
 
 const LOCAL_FALLBACK_TIMEOUT_MS = 8000;
+
+type LocalFallbackSource = "weibo" | "zhihu" | "douyin" | "kuaishou";
+
+function isLocalFallbackSource(source: SourceId): source is LocalFallbackSource {
+  return source === "weibo" || source === "zhihu" || source === "douyin" || source === "kuaishou";
+}
 
 function toNumericLimit(value: string | undefined, fallback: number): number {
   if (!value) {
