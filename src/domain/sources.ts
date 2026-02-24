@@ -1,18 +1,15 @@
 import type { CompatRoute } from "../types/hot.js";
 
 export type SourceId =
+  | "douyin"
+  | "kuaishou"
   | "weibo"
   | "zhihu"
   | "baidu"
   | "bilibili"
-  | "douyin"
-  | "kuaishou"
-  | "juejin"
   | "36kr"
-  | "ithome"
   | "toutiao"
-  | "v2ex"
-  | "github";
+  | "v2ex";
 
 export interface SourceDefinition {
   id: SourceId;
@@ -24,6 +21,22 @@ export interface SourceDefinition {
 }
 
 export const SOURCE_DEFINITIONS: readonly SourceDefinition[] = [
+  {
+    id: "douyin",
+    title: "抖音",
+    type: "热点榜",
+    description: "抖音热点",
+    category: "综合",
+    allowedParams: [],
+  },
+  {
+    id: "kuaishou",
+    title: "快手",
+    type: "热点榜",
+    description: "快手热点",
+    category: "综合",
+    allowedParams: [],
+  },
   {
     id: "weibo",
     title: "微博",
@@ -46,7 +59,7 @@ export const SOURCE_DEFINITIONS: readonly SourceDefinition[] = [
     type: "热搜榜",
     description: "百度热搜",
     category: "综合",
-    allowedParams: ["type"],
+    allowedParams: [],
   },
   {
     id: "bilibili",
@@ -54,45 +67,13 @@ export const SOURCE_DEFINITIONS: readonly SourceDefinition[] = [
     type: "热门榜",
     description: "B 站热门内容",
     category: "社区",
-    allowedParams: ["type"],
-  },
-  {
-    id: "douyin",
-    title: "抖音",
-    type: "热点榜",
-    description: "抖音热点",
-    category: "综合",
     allowedParams: [],
-  },
-  {
-    id: "kuaishou",
-    title: "快手",
-    type: "热点榜",
-    description: "快手热点",
-    category: "综合",
-    allowedParams: [],
-  },
-  {
-    id: "juejin",
-    title: "稀土掘金",
-    type: "热榜",
-    description: "掘金热门内容",
-    category: "科技",
-    allowedParams: ["type"],
   },
   {
     id: "36kr",
     title: "36 氪",
     type: "热榜",
     description: "36kr 热门资讯",
-    category: "科技",
-    allowedParams: ["type"],
-  },
-  {
-    id: "ithome",
-    title: "IT之家",
-    type: "热榜",
-    description: "IT 资讯热门榜",
     category: "科技",
     allowedParams: [],
   },
@@ -101,7 +82,7 @@ export const SOURCE_DEFINITIONS: readonly SourceDefinition[] = [
     title: "今日头条",
     type: "热榜",
     description: "头条热门榜",
-    category: "科技",
+    category: "综合",
     allowedParams: [],
   },
   {
@@ -110,15 +91,7 @@ export const SOURCE_DEFINITIONS: readonly SourceDefinition[] = [
     type: "主题榜",
     description: "V2EX 热门主题",
     category: "社区",
-    allowedParams: ["type"],
-  },
-  {
-    id: "github",
-    title: "GitHub",
-    type: "趋势榜",
-    description: "GitHub Trending",
-    category: "科技",
-    allowedParams: ["type"],
+    allowedParams: [],
   },
 ];
 

@@ -3,8 +3,7 @@ import { createApp } from "../src/app.js";
 import { SwrCache } from "../src/services/cache.js";
 import { HotService } from "../src/services/hot-service.js";
 
-class RouteMockUpstreamClient {
-  async fetchJson(source: string, query: Record<string, string>) {
+function buildMockPayload(source: string, query: Record<string, string>) {
     const limit = Number.parseInt(query.limit || "20", 10);
     const data = Array.from({ length: Math.max(limit, 12) }).map((_, index) => ({
       id: `${source}-${index + 1}`,
@@ -20,22 +19,15 @@ class RouteMockUpstreamClient {
       total: data.length,
       data,
     };
-  }
-
-  async fetchRss() {
-    return "<rss version=\"2.0\"></rss>";
-  }
-
-  async ping() {
-    return { ok: true, latencyMs: 5 };
-  }
 }
 
 function makeTestApp() {
   const service = new HotService({
     cache: new SwrCache({ ttlSeconds: 60, staleSeconds: 60, useRedis: false }),
-    upstreamClient: new RouteMockUpstreamClient(),
   });
+  (service as unknown as {
+    fetchLocalFallback: (source: string) => Promise<Record<string, unknown>>;
+  }).fetchLocalFallback = async (source: string) => buildMockPayload(source, {});
 
   return createApp({
     hotService: service,
@@ -46,14 +38,27 @@ function makeTestApp() {
 }
 
 describe("Routes", () => {
-  test("GET /all returns 12 sources", async () => {
+  test("GET /all returns local-only sources", async () => {
     const app = makeTestApp();
     const response = await app.request("/all");
     const json = (await response.json()) as { code: number; count: number };
 
     expect(response.status).toBe(200);
     expect(json.code).toBe(200);
-    expect(json.count).toBe(12);
+    expect(json.count).toBe(9);
+  });
+
+  test("GET /api/v1/sources includes newly enabled local sources", async () => {
+    const app = makeTestApp();
+    const response = await app.request("/api/v1/sources");
+    const json = (await response.json()) as { code: number; data: Array<{ id: string }> };
+
+    expect(response.status).toBe(200);
+    expect(json.code).toBe(200);
+    const ids = json.data.map((item) => item.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(["baidu", "bilibili", "36kr", "toutiao", "v2ex"]),
+    );
   });
 
   test("GET /weibo?limit=10 returns code=200 and capped results", async () => {

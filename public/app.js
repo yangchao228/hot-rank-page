@@ -1,16 +1,25 @@
-const categoryTabs = document.getElementById("categoryTabs");
 const limitInput = document.getElementById("limitInput");
 const refreshBtn = document.getElementById("refreshBtn");
-const statusText = document.getElementById("statusText");
-const updateTime = document.getElementById("updateTime");
-const successText = document.getElementById("successText");
 const errorBox = document.getElementById("errorBox");
 const board = document.getElementById("board");
 
 let sources = [];
 let visibleSources = [];
 let feeds = new Map();
-let selectedCategory = "全部";
+let activeLoadToken = 0;
+
+const SOURCE_PRIORITY = ["douyin", "kuaishou", "weibo", "zhihu"];
+const SOURCE_ICONS = {
+  douyin: "🎵",
+  kuaishou: "⚡",
+  weibo: "🧧",
+  zhihu: "📘",
+  baidu: "🔎",
+  bilibili: "📺",
+  "36kr": "📰",
+  toutiao: "🗞️",
+  v2ex: "💬",
+};
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -75,59 +84,126 @@ function renderTabs(categories) {
   });
 }
 
-function groupByCategory() {
-  const map = new Map();
-  visibleSources.forEach((source) => {
-    if (!map.has(source.category)) {
-      map.set(source.category, []);
+function buildItemDesc(item, feed) {
+  const hiddenDescSources = new Set(["zhihu", "douyin", "kuaishou"]);
+  if (hiddenDescSources.has(item.source || feed.source)) return "";
+  return typeof item.desc === "string" ? item.desc.trim() : "";
+}
+
+function createSourceIcon(sourceId) {
+  return SOURCE_ICONS[sourceId] || "🔥";
+}
+
+function createStateBlock(kind, text) {
+  const box = document.createElement("div");
+  box.className = `source-status ${kind}`;
+
+  if (kind === "loading") {
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    box.appendChild(spinner);
+  }
+
+  const label = document.createElement("span");
+  label.textContent = text;
+  box.appendChild(label);
+
+  return box;
+}
+
+function sortSourcesForDisplay(list) {
+  const sourceOrder = new Map(sources.map((source, index) => [source.id, index]));
+  return [...list].sort((a, b) => {
+    const ai = SOURCE_PRIORITY.indexOf(a.id);
+    const bi = SOURCE_PRIORITY.indexOf(b.id);
+    const aRank = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+    const bRank = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+    if (aRank !== bRank) {
+      return aRank - bRank;
     }
-    map.get(source.category).push(source);
+    return (sourceOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (sourceOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER);
   });
-  return map;
 }
 
 function renderBoard() {
   board.innerHTML = "";
-  const grouped = groupByCategory();
-  const categories = Array.from(grouped.keys());
+  const grid = document.createElement("div");
+  grid.className = "source-grid";
 
-  categories.forEach((category) => {
-    if (selectedCategory !== "全部" && selectedCategory !== category) {
+  sortSourcesForDisplay(visibleSources).forEach((source) => {
+    const card = document.createElement("div");
+    card.className = "source-card";
+
+    const header = document.createElement("div");
+    header.className = "source-header";
+
+    const ident = document.createElement("div");
+    ident.className = "source-ident";
+
+    const icon = document.createElement("div");
+    icon.className = "source-icon";
+    icon.textContent = createSourceIcon(source.id);
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "source-title-wrap";
+
+    const name = document.createElement("div");
+    name.className = "source-title";
+    name.textContent = source.title;
+
+    const type = document.createElement("div");
+    type.className = "source-type";
+    type.textContent = source.type;
+
+    titleWrap.appendChild(name);
+    titleWrap.appendChild(type);
+    ident.appendChild(icon);
+    ident.appendChild(titleWrap);
+
+    const headerMeta = document.createElement("div");
+    headerMeta.className = "source-header-meta";
+
+    const feed = feeds.get(source.id);
+    const itemCount = Array.isArray(feed?.items) ? feed.items.length : 0;
+    const countBadge = document.createElement("div");
+    countBadge.className = "source-badge";
+    if (feed?.loading && itemCount > 0) {
+      countBadge.classList.add("is-warn");
+      countBadge.textContent = "刷新中";
+    } else if (feed?.loading) {
+      countBadge.classList.add("is-loading");
+      countBadge.textContent = "加载中";
+    } else if (feed?.error && itemCount > 0) {
+      countBadge.classList.add("is-warn");
+      countBadge.textContent = "旧数据";
+    } else if (feed?.error) {
+      countBadge.classList.add("is-error");
+      countBadge.textContent = "失败";
+    } else {
+      countBadge.textContent = `${itemCount} 条`;
+    }
+    headerMeta.appendChild(countBadge);
+
+    header.appendChild(ident);
+    header.appendChild(headerMeta);
+    card.appendChild(header);
+
+    const list = document.createElement("ul");
+    list.className = "source-list";
+
+    const hasItems = !!feed && Array.isArray(feed.items) && feed.items.length > 0;
+    if (!hasItems && feed?.loading) {
+      card.appendChild(createStateBlock("loading", "加载中..."));
+      grid.appendChild(card);
       return;
     }
 
-    const section = document.createElement("section");
-    section.className = "category-section";
-
-    const title = document.createElement("h2");
-    title.className = "category-title";
-    title.textContent = category;
-    section.appendChild(title);
-
-    const grid = document.createElement("div");
-    grid.className = "source-grid";
-
-    grouped.get(category).forEach((source) => {
-      const card = document.createElement("div");
-      card.className = "source-card";
-
-      const header = document.createElement("div");
-      header.className = "source-header";
-
-      const name = document.createElement("div");
-      name.className = "source-title";
-      name.textContent = source.title;
-
-      const type = document.createElement("div");
-      type.className = "source-type";
-      type.textContent = source.type;
-
-      header.appendChild(name);
-      header.appendChild(type);
-      card.appendChild(header);
-
-      const list = document.createElement("ul");
-      list.className = "source-list";
+    if (!hasItems && feed?.error) {
+      card.appendChild(createStateBlock("error", feed.message || "加载失败"));
+      grid.appendChild(card);
+      return;
+    }
 
       const feed = feeds.get(source.id);
       if (!feed || feed.error || !Array.isArray(feed.items) || feed.items.length === 0) {
@@ -151,21 +227,61 @@ function renderBoard() {
         list.appendChild(row);
       });
 
-      if (list.children.length === 0) {
-        return;
-      }
+    feed.items.forEach((item, index) => {
+      const row = document.createElement("li");
+      row.className = "source-item";
 
-      card.appendChild(list);
-      grid.appendChild(card);
+      const top = document.createElement("div");
+      top.className = "source-item-top";
+
+      const rank = document.createElement("span");
+      rank.className = "source-rank";
+      rank.textContent = String(index + 1).padStart(2, "0");
+
+      const link = document.createElement("a");
+      link.className = "source-link";
+      link.href = item.url || item.mobileUrl || "#";
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = item.title || "(untitled)";
+
+      const meta = document.createElement("span");
+      meta.className = "source-item-meta";
+      meta.textContent = buildItemMeta(item, feed);
+
+      top.appendChild(rank);
+      top.appendChild(link);
+      row.appendChild(top);
+      row.appendChild(meta);
+
+      const descText = buildItemDesc(item, feed);
+      if (descText) {
+        const desc = document.createElement("span");
+        desc.className = "source-item-desc";
+        desc.textContent = descText;
+        row.appendChild(desc);
+      }
+      list.appendChild(row);
     });
 
-    if (grid.children.length === 0) {
+    if (list.children.length === 0) {
       return;
     }
 
-    section.appendChild(grid);
-    board.appendChild(section);
+    card.appendChild(list);
+
+    if (feed?.loading) {
+      card.appendChild(createStateBlock("loading-inline", "正在刷新..."));
+    } else if (feed?.error) {
+      card.appendChild(createStateBlock("warn-inline", "刷新失败，当前展示旧数据"));
+    }
+
+    grid.appendChild(card);
   });
+
+  if (grid.children.length > 0) {
+    board.appendChild(grid);
+  }
 
   if (board.children.length === 0) {
     const empty = document.createElement("div");
@@ -178,59 +294,82 @@ function renderBoard() {
 async function loadSources() {
   const response = await fetchJson("/api/v1/sources");
   sources = response.data || [];
-  visibleSources = [...sources];
-  const categories = Array.from(new Set(visibleSources.map((source) => source.category))).sort();
-  renderTabs(categories);
+  visibleSources = sortSourcesForDisplay(sources);
 }
 
 async function loadFeeds() {
   setError("");
-  statusText.textContent = "加载中";
   const limit = Number.parseInt(limitInput.value, 10) || 8;
+  const loadToken = ++activeLoadToken;
+  const previousFeeds = feeds;
+  feeds = new Map();
+  visibleSources = sortSourcesForDisplay(sources);
 
-  const results = await Promise.allSettled(
+  for (const source of sources) {
+    const prev = previousFeeds.get(source.id);
+    const hasPrevItems = Array.isArray(prev?.items) && prev.items.length > 0;
+    if (hasPrevItems) {
+      feeds.set(source.id, {
+        ...prev,
+        loading: true,
+        error: false,
+        message: "",
+      });
+    } else {
+      feeds.set(source.id, {
+        loading: true,
+        error: false,
+        message: "",
+        items: [],
+      });
+    }
+  }
+  renderBoard();
+
+  let successCount = 0;
+
+  await Promise.allSettled(
     sources.map(async (source) => {
-      const response = await fetchJson(`/api/v1/hot/${source.id}?limit=${limit}`);
-      return { source: source.id, data: response.data };
+      try {
+        const response = await fetchJson(`/api/v1/hot/${source.id}?limit=${limit}`);
+        if (loadToken !== activeLoadToken) return;
+        successCount += 1;
+        feeds.set(source.id, {
+          ...response.data,
+          loading: false,
+          error: false,
+          message: "",
+        });
+        setError("");
+        renderBoard();
+      } catch (error) {
+        if (loadToken !== activeLoadToken) return;
+        const prev = feeds.get(source.id);
+        const hasPrevItems = Array.isArray(prev?.items) && prev.items.length > 0;
+        if (hasPrevItems) {
+          feeds.set(source.id, {
+            ...prev,
+            loading: false,
+            error: true,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        } else {
+          feeds.set(source.id, {
+            loading: false,
+            error: true,
+            message: error instanceof Error ? error.message : String(error),
+            items: [],
+          });
+        }
+        renderBoard();
+      }
     }),
   );
 
-  feeds = new Map();
-  const successSourceIds = new Set();
-  let successCount = 0;
-  let failedCount = 0;
-  const times = [];
-
-  results.forEach((result, index) => {
-    const sourceId = sources[index]?.id;
-    if (result.status === "fulfilled") {
-      successCount += 1;
-      successSourceIds.add(result.value.source);
-      feeds.set(result.value.source, result.value.data);
-      if (result.value.data.updateTime) {
-        times.push(result.value.data.updateTime);
-      }
-      return;
-    }
-    failedCount += 1;
-    if (sourceId) feeds.delete(sourceId);
-  });
-
-  visibleSources = sources.filter((source) => successSourceIds.has(source.id));
-  const categories = Array.from(new Set(visibleSources.map((source) => source.category))).sort();
-  if (selectedCategory !== "全部" && !categories.includes(selectedCategory)) {
-    selectedCategory = "全部";
-  }
-  renderTabs(categories);
-
-  statusText.textContent = failedCount === 0 ? "正常" : "部分异常";
-  updateTime.textContent = times.length > 0 ? formatTime(times.sort().reverse()[0]) : "-";
-  successText.textContent = `${successCount}/${sources.length}`;
+  if (loadToken !== activeLoadToken) return;
   if (successCount === 0) {
     setError("当前没有可用热榜源");
   }
-
-  renderBoard();
 }
 
 async function bootstrap() {

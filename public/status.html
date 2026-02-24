@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>状态检查 · Hot Rank Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Lexend:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero hero-compact">
+        <h1>状态检查</h1>
+        <div class="hero-actions">
+          <a class="link-btn" href="/">返回主页面</a>
+          <button id="refreshStatusBtn" type="button">刷新状态</button>
+        </div>
+      </header>
+
+      <section id="statusError" class="error hidden"></section>
+
+      <section class="status-grid" id="statusGrid">
+        <article class="status-card">
+          <div class="status-card-title">服务状态</div>
+          <div class="status-value" id="overallStatus">初始化中</div>
+          <div class="status-meta" id="checkedAt">-</div>
+        </article>
+
+        <article class="status-card">
+          <div class="status-card-title">上游检查</div>
+          <div class="status-value" id="upstreamStatus">-</div>
+          <div class="status-meta" id="upstreamLatency">-</div>
+        </article>
+
+        <article class="status-card">
+          <div class="status-card-title">缓存状态</div>
+          <div class="status-value" id="cacheStatus">-</div>
+          <div class="status-meta" id="cacheMeta">-</div>
+        </article>
+      </section>
+
+      <section class="status-panel status-explain-panel">
+        <div class="status-panel-title">状态解读</div>
+        <div class="status-explain-grid">
+          <article class="status-note-card">
+            <div class="status-note-label">当前情况</div>
+            <div class="status-note-value" id="statusSummary">等待检查...</div>
+            <p class="status-note-desc" id="statusSummaryDesc">-</p>
+          </article>
+
+          <article class="status-note-card">
+            <div class="status-note-label">数据来源判断</div>
+            <div class="status-note-value" id="fallbackJudge">等待检查...</div>
+            <p class="status-note-desc" id="fallbackJudgeDesc">-</p>
+          </article>
+
+          <article class="status-note-card">
+            <div class="status-note-label">缓存说明</div>
+            <div class="status-note-value" id="cacheExplain">等待检查...</div>
+            <p class="status-note-desc" id="cacheExplainDesc">-</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="status-panel">
+        <div class="status-panel-title">原始响应</div>
+        <pre id="statusJson" class="status-json">{}</pre>
+      </section>
+    </div>
+
+    <script type="module" src="/status.js"></script>
+  </body>
+</html>
