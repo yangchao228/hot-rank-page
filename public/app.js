@@ -20,6 +20,17 @@ const SOURCE_ICONS = {
   toutiao: "🗞️",
   v2ex: "💬",
 };
+const SOURCE_PAGE_LINKS = {
+  douyin: "https://www.douyin.com/hot",
+  kuaishou: "https://www.kuaishou.com/hotlist",
+  weibo: "https://s.weibo.com/top/summary",
+  zhihu: "https://www.zhihu.com/hot",
+  baidu: "https://top.baidu.com/board?tab=realtime",
+  bilibili: "https://www.bilibili.com/v/popular/all",
+  "36kr": "https://www.36kr.com/hot-list/catalog",
+  toutiao: "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc",
+  v2ex: "https://www.v2ex.com/?tab=hot",
+};
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -48,14 +59,13 @@ function formatTime(value) {
 }
 
 function buildItemMeta(item, feed) {
-  const hiddenDescSources = new Set(["zhihu", "douyin", "kuaishou"]);
   const timeText = formatTime(item.timestamp || feed.updateTime);
   const normalizedTime = timeText === "-" ? "时间未知" : timeText;
-  const parts = [`时间 ${normalizedTime}`];
-  const shouldShowDesc = item.desc && !hiddenDescSources.has(item.source || feed.source);
-  if (shouldShowDesc) {
-    parts.unshift(item.desc);
+  const parts = [];
+  if (item.hot !== undefined && item.hot !== null && String(item.hot).trim() !== "") {
+    parts.push(`热度 ${String(item.hot)}`);
   }
+  parts.push(`时间 ${normalizedTime}`);
   return parts.join(" · ");
 }
 
@@ -134,6 +144,7 @@ function renderBoard() {
   sortSourcesForDisplay(visibleSources).forEach((source) => {
     const card = document.createElement("div");
     card.className = "source-card";
+    const feed = feeds.get(source.id);
 
     const header = document.createElement("div");
     header.className = "source-header";
@@ -148,8 +159,11 @@ function renderBoard() {
     const titleWrap = document.createElement("div");
     titleWrap.className = "source-title-wrap";
 
-    const name = document.createElement("div");
-    name.className = "source-title";
+    const name = document.createElement("a");
+    name.className = "source-title source-title-link";
+    name.href = feed?.link || SOURCE_PAGE_LINKS[source.id] || "#";
+    name.target = "_blank";
+    name.rel = "noreferrer";
     name.textContent = source.title;
 
     const type = document.createElement("div");
@@ -164,7 +178,6 @@ function renderBoard() {
     const headerMeta = document.createElement("div");
     headerMeta.className = "source-header-meta";
 
-    const feed = feeds.get(source.id);
     const itemCount = Array.isArray(feed?.items) ? feed.items.length : 0;
     const countBadge = document.createElement("div");
     countBadge.className = "source-badge";
@@ -204,28 +217,6 @@ function renderBoard() {
       grid.appendChild(card);
       return;
     }
-
-      const feed = feeds.get(source.id);
-      if (!feed || feed.error || !Array.isArray(feed.items) || feed.items.length === 0) {
-        return;
-      }
-      feed.items.forEach((item) => {
-        const row = document.createElement("li");
-        row.className = "source-item";
-
-        const link = document.createElement("a");
-        link.href = item.url || item.mobileUrl || "#";
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        link.textContent = item.title || "(untitled)";
-
-        const meta = document.createElement("span");
-        meta.textContent = buildItemMeta(item, feed);
-
-        row.appendChild(link);
-        row.appendChild(meta);
-        list.appendChild(row);
-      });
 
     feed.items.forEach((item, index) => {
       const row = document.createElement("li");

@@ -18,6 +18,11 @@ import { fetchZhihuHotList } from "./local/zhihu.js";
 import { fetchDouyinHotList } from "./local/douyin.js";
 import { fetchKuaishouHotList } from "./local/kuaishou.js";
 import { fetchWeiboHotList } from "./local/weibo.js";
+import { fetchBaiduHotList } from "./local/baidu.js";
+import { fetchBilibiliHotList } from "./local/bilibili.js";
+import { fetch36KrHotList } from "./local/kr36.js";
+import { fetchToutiaoHotList } from "./local/toutiao.js";
+import { fetchV2exHotList } from "./local/v2ex.js";
 import { buildRssXml } from "../utils/rss.js";
 
 interface HotServiceDeps {
@@ -59,6 +64,15 @@ interface SourceRefreshState {
   totalRefreshes: number;
   totalFailures: number;
   gaveUpInCurrentCycle: boolean;
+  recentPulls: SourceRefreshAttempt[];
+}
+
+interface SourceRefreshAttempt {
+  at: string;
+  status: "success" | "failure";
+  mode: "refresh" | "retry";
+  durationMs: number;
+  error?: string;
 }
 
 type LocalFallbackSource = "weibo" | "zhihu" | "douyin" | "kuaishou";
@@ -161,6 +175,7 @@ export class HotService {
         totalRefreshes: 0,
         totalFailures: 0,
         gaveUpInCurrentCycle: false,
+        recentPulls: [],
       });
     }
   }
@@ -265,8 +280,15 @@ export class HotService {
       totalRefreshes: 0,
       totalFailures: 0,
       gaveUpInCurrentCycle: false,
+      recentPulls: [],
     };
     this.schedulerStates.set(source, { ...current, ...patch });
+  }
+
+  private pushSchedulerPullHistory(source: SourceId, item: SourceRefreshAttempt): void {
+    const current = this.schedulerStates.get(source);
+    const recentPulls = [item, ...(current?.recentPulls ?? [])].slice(0, 3);
+    this.setSchedulerState(source, { recentPulls });
   }
 
   private clearScheduledTimer(source: SourceId): void {
@@ -312,15 +334,23 @@ export class HotService {
   ): Promise<void> {
     const state = this.schedulerStates.get(source);
     if (!state) return;
+    const runStartedAt = Date.now();
 
     try {
       await this.warmDefaultSourceCache(source);
+      const completedAt = new Date().toISOString();
+      this.pushSchedulerPullHistory(source, {
+        at: completedAt,
+        status: "success",
+        mode,
+        durationMs: Date.now() - runStartedAt,
+      });
       this.setSchedulerState(source, {
         consecutiveFailures: 0,
         retriesInCurrentCycle: 0,
         totalRefreshes: state.totalRefreshes + 1,
         gaveUpInCurrentCycle: false,
-        lastSuccessAt: new Date().toISOString(),
+        lastSuccessAt: completedAt,
         lastError: undefined,
       });
 
@@ -329,13 +359,21 @@ export class HotService {
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const completedAt = new Date().toISOString();
+      this.pushSchedulerPullHistory(source, {
+        at: completedAt,
+        status: "failure",
+        mode,
+        durationMs: Date.now() - runStartedAt,
+        error: message,
+      });
       const nextFailures = state.consecutiveFailures + 1;
       const nextRetries = mode === "retry" ? state.retriesInCurrentCycle + 1 : 1;
       this.setSchedulerState(source, {
         consecutiveFailures: nextFailures,
         retriesInCurrentCycle: nextRetries,
         totalFailures: state.totalFailures + 1,
-        lastFailureAt: new Date().toISOString(),
+        lastFailureAt: completedAt,
         lastError: message,
       });
 

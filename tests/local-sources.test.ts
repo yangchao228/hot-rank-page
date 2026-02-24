@@ -316,6 +316,63 @@ describe("local source parsers", () => {
     expect(payload.data[0]?.hot).toBe(23);
   });
 
+  test("falls back to built-in jina proxy for v2ex api", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("r.jina.ai/http://www.v2ex.com/api/topics/hot.json")) {
+          return new Response(
+            `Title: \n\nURL Source: http://www.v2ex.com/api/topics/hot.json\n\nMarkdown Content:\n[{"id":777,"title":"Jina V2EX 主题","url":"https://www.v2ex.com/t/777","replies":7,"last_modified":1771669800}]`,
+            { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } },
+          );
+        }
+        if (url.includes("v2ex.com/api/topics/")) {
+          return new Response("blocked", { status: 500, headers: { "content-type": "text/plain" } });
+        }
+        return new Response("blocked", { status: 500, headers: { "content-type": "text/plain" } });
+      }) as unknown as typeof fetch,
+    );
+
+    const payload = await fetchV2exHotList(3000);
+    expect(payload.name).toBe("v2ex");
+    expect(payload.data[0]?.title).toBe("Jina V2EX 主题");
+    expect(payload.data[0]?.hot).toBe(7);
+    expect(payload.data[0]?.url).toContain("/t/777");
+  });
+
+  test("uses built-in v2ex mirror api when official api is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("global.v2ex.co/api/topics/hot.json")) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: 999,
+                title: "Global V2EX 镜像主题",
+                url: "https://www.v2ex.com/t/999",
+                replies: 99,
+                last_modified: 1771669800,
+              },
+            ]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("v2ex.com/api/topics/")) {
+          return new Response("blocked", { status: 500, headers: { "content-type": "text/plain" } });
+        }
+        return new Response("blocked", { status: 500, headers: { "content-type": "text/plain" } });
+      }) as unknown as typeof fetch,
+    );
+
+    const payload = await fetchV2exHotList(3000);
+    expect(payload.name).toBe("v2ex");
+    expect(payload.data[0]?.title).toBe("Global V2EX 镜像主题");
+    expect(payload.data[0]?.hot).toBe(99);
+  });
+
   test("parses 36kr hot list from html links fallback", async () => {
     vi.stubGlobal(
       "fetch",

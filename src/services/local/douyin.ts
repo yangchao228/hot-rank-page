@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { parseNumber, requestJson as requestJsonShared, toIso } from "./http.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,6 +28,16 @@ interface DouyinPayloadShape {
     word_list?: DouyinWordItem[];
   };
   active_time?: string;
+}
+
+interface TcslwDouyinResponse {
+  success?: boolean;
+  msg?: string;
+  title?: string;
+  subtitle?: string;
+  update_time?: string;
+  total?: number;
+  data?: Array<Record<string, unknown>>;
 }
 
 export interface DouyinPayload {
@@ -154,9 +165,78 @@ async function requestJson(url: string, timeoutMs: number): Promise<DouyinPayloa
   }
 }
 
+async function fetchTcslwDouyinHotList(timeoutMs: number): Promise<DouyinPayload | null> {
+  const json = await requestJsonShared<TcslwDouyinResponse>("https://api.tcslw.cn/api/hotlist?type=douyin", {
+    timeoutMs,
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      referer: "https://api.tcslw.cn/",
+    },
+    maxBufferBytes: 8 * 1024 * 1024,
+  });
+
+  const rows = Array.isArray(json.data) ? json.data : [];
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const fallbackTime = toIso(json.update_time) ?? normalizeIsoFromUnknown(json.update_time);
+  const data = rows
+    .map((row, index) => {
+      const title = typeof row.title === "string" ? row.title.trim() : "";
+      if (!title) return null;
+      const url =
+        (typeof row.url === "string" && row.url.trim() ? row.url.trim() : undefined) ??
+        `https://www.douyin.com/search/${encodeURIComponent(title)}`;
+      return {
+        id:
+          typeof row.id === "string" || typeof row.id === "number"
+            ? row.id
+            : typeof row.index === "number" || typeof row.index === "string"
+              ? row.index
+              : index + 1,
+        title,
+        desc: typeof row.subtitle === "string" ? row.subtitle.trim() : undefined,
+        timestamp: toIso(row.update_time) ?? normalizeIsoFromUnknown(row.time) ?? fallbackTime,
+        hot: parseNumber(row.hot),
+        url,
+        mobileUrl:
+          (typeof row.mobilUrl === "string" && row.mobilUrl.trim() ? row.mobilUrl.trim() : undefined) ?? url,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  return {
+    name: "douyin",
+    title: "抖音",
+    type: "热榜",
+    description: "抖音热榜",
+    link: "https://www.douyin.com/hot",
+    total: data.length,
+    data,
+  };
+}
+
 export async function fetchDouyinHotList(timeoutMs: number): Promise<DouyinPayload> {
-  const perEndpointTimeout = Math.max(2500, Math.floor(timeoutMs / DOUYIN_ENDPOINTS.length));
   let lastError: unknown;
+
+  try {
+    const mirrorPayload = await fetchTcslwDouyinHotList(Math.max(2500, Math.floor(timeoutMs / 2)));
+    if (mirrorPayload) {
+      return mirrorPayload;
+    }
+    lastError = new Error("tcslw douyin mirror returned empty data");
+  } catch (error) {
+    lastError = error;
+  }
+
+  const perEndpointTimeout = Math.max(2500, Math.floor(timeoutMs / DOUYIN_ENDPOINTS.length));
 
   for (const endpoint of DOUYIN_ENDPOINTS) {
     try {
