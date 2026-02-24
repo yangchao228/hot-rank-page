@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hot Rank Workspace</title>
+    <title>Hot Rank Workspace · v2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Lexend:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
@@ -15,37 +15,17 @@
   <body>
     <div class="page">
       <header class="hero">
-        <div class="hero-meta">
-          <span class="pill">Hot Rank Workspace</span>
-          <span class="pill subtle">Updated live</span>
-        </div>
         <h1>全网热榜聚合</h1>
-        <p>所有源集中展示，按分类浏览，清爽 Notion 风格。</p>
       </header>
 
       <section class="toolbar">
-        <div class="tabs" id="categoryTabs"></div>
         <div class="controls">
+          <a class="link-btn" href="/status">状态检查</a>
           <label>
             <span>条目上限</span>
             <input id="limitInput" type="number" min="1" max="20" value="8" />
           </label>
           <button id="refreshBtn">刷新全部</button>
-        </div>
-      </section>
-
-      <section class="meta" id="metaPanel">
-        <div>
-          <span class="meta-key">状态</span>
-          <span id="statusText">初始化中</span>
-        </div>
-        <div>
-          <span class="meta-key">更新时间</span>
-          <span id="updateTime">-</span>
-        </div>
-        <div>
-          <span class="meta-key">成功/失败</span>
-          <span id="successText">-</span>
         </div>
       </section>
 

@@ -14,21 +14,21 @@ import type {
   UpstreamHotPayload,
 } from "../types/hot.js";
 import { SwrCache } from "./cache.js";
-import { CircuitOpenError, UpstreamClient } from "./upstream-client.js";
 import { fetchZhihuHotList } from "./local/zhihu.js";
 import { fetchDouyinHotList } from "./local/douyin.js";
 import { fetchKuaishouHotList } from "./local/kuaishou.js";
+import { fetchWeiboHotList } from "./local/weibo.js";
+import { fetchBaiduHotList } from "./local/baidu.js";
+import { fetchBilibiliHotList } from "./local/bilibili.js";
+import { fetch36KrHotList } from "./local/kr36.js";
+import { fetchToutiaoHotList } from "./local/toutiao.js";
+import { fetchV2exHotList } from "./local/v2ex.js";
 import { buildRssXml } from "../utils/rss.js";
-
-export interface UpstreamAdapter {
-  fetchJson(source: string, query: Record<string, string>): Promise<Record<string, unknown>>;
-  fetchRss(source: string, query: Record<string, string>): Promise<string>;
-  ping(): Promise<{ ok: boolean; latencyMs: number; message?: string }>;
-}
 
 interface HotServiceDeps {
   cache?: SwrCache;
-  upstreamClient?: UpstreamAdapter;
+  // Deprecated: retained for test/backward compatibility, ignored in local-only mode.
+  upstreamClient?: unknown;
 }
 
 interface CompatJsonResult {
@@ -46,12 +46,6 @@ interface CompatRssResult {
 export type CompatResult = CompatJsonResult | CompatRssResult;
 
 const LOCAL_FALLBACK_TIMEOUT_MS = 8000;
-
-type LocalFallbackSource = "zhihu" | "douyin" | "kuaishou";
-
-function isLocalFallbackSource(source: SourceId): source is LocalFallbackSource {
-  return source === "zhihu" || source === "douyin" || source === "kuaishou";
-}
 
 function toNumericLimit(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -103,18 +97,15 @@ function applyCompatLimit(payload: Record<string, unknown>, limit: number): void
 
 function buildRssFromCompatPayload(source: SourceId, payload: Record<string, unknown>): string {
   const defaultMeta: Record<SourceId, { title: string; link: string; description: string }> = {
-    weibo: { title: "微博热搜", link: "https://s.weibo.com/top/summary", description: "微博热搜榜" },
-    zhihu: { title: "知乎热榜", link: "https://www.zhihu.com/hot", description: "知乎热榜" },
-    baidu: { title: "百度热搜", link: "https://top.baidu.com", description: "百度热搜榜" },
-    bilibili: { title: "哔哩哔哩热门榜", link: "https://www.bilibili.com/v/popular/all", description: "B 站热门榜" },
     douyin: { title: "抖音热榜", link: "https://www.douyin.com/hot", description: "抖音热榜" },
     kuaishou: { title: "快手热榜", link: "https://www.kuaishou.com/", description: "快手热榜" },
-    juejin: { title: "掘金热榜", link: "https://juejin.cn/hot/articles", description: "掘金热榜" },
-    "36kr": { title: "36 氪热榜", link: "https://www.36kr.com/hot-list", description: "36 氪热榜" },
-    ithome: { title: "IT之家热榜", link: "https://www.ithome.com/", description: "IT之家热榜" },
+    weibo: { title: "微博热搜", link: "https://s.weibo.com/top/summary", description: "微博热搜榜" },
+    zhihu: { title: "知乎热榜", link: "https://www.zhihu.com/hot", description: "知乎热榜" },
+    baidu: { title: "百度热搜", link: "https://top.baidu.com/board?tab=realtime", description: "百度热搜榜" },
+    bilibili: { title: "哔哩哔哩热门榜", link: "https://www.bilibili.com/v/popular/all", description: "B 站热门榜" },
+    "36kr": { title: "36 氪热榜", link: "https://www.36kr.com/hot-list/catalog", description: "36 氪热榜" },
     toutiao: { title: "头条热榜", link: "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc", description: "今日头条热榜" },
     v2ex: { title: "V2EX 热榜", link: "https://www.v2ex.com/?tab=hot", description: "V2EX 热榜" },
-    github: { title: "GitHub 趋势榜", link: "https://github.com/trending", description: "GitHub Trending" },
   };
 
   const meta = defaultMeta[source];
@@ -136,11 +127,8 @@ function buildRssFromCompatPayload(source: SourceId, payload: Record<string, unk
 export class HotService {
   private readonly cache: SwrCache;
 
-  private readonly upstreamClient: UpstreamAdapter;
-
   constructor(deps: HotServiceDeps = {}) {
     this.cache = deps.cache ?? new SwrCache();
-    this.upstreamClient = deps.upstreamClient ?? new UpstreamClient();
   }
 
   listSources() {
@@ -188,6 +176,9 @@ export class HotService {
   }
 
   private async fetchLocalFallback(source: SourceId): Promise<Record<string, unknown>> {
+    if (source === "weibo") {
+      return fetchWeiboHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
     if (source === "zhihu") {
       return fetchZhihuHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
     }
@@ -196,6 +187,21 @@ export class HotService {
     }
     if (source === "kuaishou") {
       return fetchKuaishouHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
+    if (source === "baidu") {
+      return fetchBaiduHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
+    if (source === "bilibili") {
+      return fetchBilibiliHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
+    if (source === "36kr") {
+      return fetch36KrHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
+    if (source === "toutiao") {
+      return fetchToutiaoHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
+    if (source === "v2ex") {
+      return fetchV2exHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
     }
     throw new Error(`No local fallback implementation for source ${source}`);
   }
@@ -260,20 +266,7 @@ export class HotService {
     const key = this.cacheKey(source, compatQuery, wantsRss ? "rss" : "json");
 
     try {
-      if (wantsRss) {
-        const result = await this.loadWithSWR(key, noCache, () =>
-          this.upstreamClient.fetchRss(source, compatQuery),
-        );
-        return {
-          type: "rss",
-          status: 200,
-          body: result.value,
-        };
-      }
-
-      const result = await this.loadWithSWR(key, noCache, () =>
-        this.upstreamClient.fetchJson(source, compatQuery),
-      );
+      const result = await this.loadWithSWR(key, noCache, () => this.fetchLocalFallback(source));
 
       const payload = {
         code: 200,
@@ -289,50 +282,21 @@ export class HotService {
         payload["total"] = (payload["data"] as unknown[]).length;
       }
 
+      if (wantsRss) {
+        return {
+          type: "rss",
+          status: 200,
+          body: buildRssFromCompatPayload(source, payload),
+        };
+      }
+
       return {
         type: "json",
         status: 200,
         body: payload,
       };
-    } catch (error) {
-      if (!isLocalFallbackSource(source)) {
-        if (error instanceof CircuitOpenError) {
-          throw new AppError("Upstream temporarily unavailable", 503);
-        }
-        throw new AppError("Failed to fetch upstream source", 502);
-      }
-
-      try {
-        const fallback = await this.loadWithSWR(key, noCache, () => this.fetchLocalFallback(source));
-        const payload = {
-          code: 200,
-          ...fallback.value,
-          fromCache: fallback.fromCache,
-          updateTime: fallback.updateTime,
-        } as Record<string, unknown>;
-
-        const limit = toNumericLimit(compatQuery.limit, Number.MAX_SAFE_INTEGER);
-        applyCompatLimit(payload, limit);
-
-        if (wantsRss) {
-          return {
-            type: "rss",
-            status: 200,
-            body: buildRssFromCompatPayload(source, payload),
-          };
-        }
-
-        return {
-          type: "json",
-          status: 200,
-          body: payload,
-        };
-      } catch (fallbackError) {
-        if (fallbackError instanceof CircuitOpenError || error instanceof CircuitOpenError) {
-          throw new AppError("Upstream temporarily unavailable", 503);
-        }
-        throw new AppError("Failed to fetch upstream source", 502);
-      }
+    } catch {
+      throw new AppError("Failed to fetch local source", 502);
     }
   }
 
@@ -383,16 +347,7 @@ export class HotService {
     const key = this.cacheKey(source, jsonQuery, "json");
 
     try {
-      const result = await this.loadWithSWR(key, noCache, async () => {
-        try {
-          return await this.upstreamClient.fetchJson(source, jsonQuery);
-        } catch {
-          if (isLocalFallbackSource(source)) {
-            return this.fetchLocalFallback(source);
-          }
-          throw new Error("upstream failed");
-        }
-      });
+      const result = await this.loadWithSWR(key, noCache, () => this.fetchLocalFallback(source));
       const feed = this.normalizeFeed(
         source,
         result.value as UpstreamHotPayload,
@@ -411,11 +366,8 @@ export class HotService {
         message: "ok",
         data: feed,
       };
-    } catch (error) {
-      if (error instanceof CircuitOpenError) {
-        throw new AppError("Upstream temporarily unavailable", 503);
-      }
-      throw new AppError("Failed to fetch upstream source", 502);
+    } catch {
+      throw new AppError("Failed to fetch local source", 502);
     }
   }
 
@@ -487,10 +439,16 @@ export class HotService {
 
   async health() {
     const cache = await this.cache.health();
-    const upstream = await this.upstreamClient.ping();
     return {
-      status: upstream.ok ? "ok" : "degraded",
-      upstream,
+      status: "ok" as const,
+      mode: "local-only" as const,
+      localSources: SOURCE_DEFINITIONS.map((source) => source.id),
+      upstream: {
+        ok: true,
+        latencyMs: 0,
+        disabled: true,
+        message: "DailyHotApi disabled (local-only mode)",
+      },
       cache,
     };
   }

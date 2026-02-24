@@ -21,6 +21,23 @@ interface KuaishouPayload {
   }>;
 }
 
+interface MirrorJsonPayload {
+  data?: Array<Record<string, unknown>>;
+  items?: Array<Record<string, unknown>>;
+}
+
+function getOptionalKuaishouMirrorUrl(): string | null {
+  const raw = process.env.KUAISHOU_MIRROR_URL?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 function parseChineseNumber(input: string | undefined): number | undefined {
   if (!input) {
     return undefined;
@@ -165,39 +182,60 @@ async function fetchTextWithCurl(
   return stdout;
 }
 
-export async function fetchKuaishouHotList(timeoutMs: number): Promise<KuaishouPayload> {
-  const url = "https://www.kuaishou.com/?isHome=1";
-  const headers: Record<string, string> = {
-    accept: "text/html,application/xhtml+xml",
-    "user-agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+function normalizeMirrorJson(json: MirrorJsonPayload): KuaishouPayload | null {
+  const rows = Array.isArray(json.data) ? json.data : Array.isArray(json.items) ? json.items : [];
+  const data = rows
+    .map((row, index) => {
+      const title =
+        typeof row.title === "string"
+          ? row.title.trim()
+          : typeof row.name === "string"
+            ? row.name.trim()
+            : "";
+      if (!title) return null;
+      const url =
+        (typeof row.url === "string" ? row.url : undefined) ??
+        (typeof row.mobileUrl === "string" ? row.mobileUrl : undefined) ??
+        "https://www.kuaishou.com/";
+      return {
+        id: typeof row.id === "string" || typeof row.id === "number" ? String(row.id) : `kuaishou-${index + 1}`,
+        title,
+        cover: typeof row.cover === "string" ? row.cover : undefined,
+        timestamp: typeof row.timestamp === "string" ? row.timestamp : undefined,
+        hot: typeof row.hot === "number" ? row.hot : parseChineseNumber(typeof row.hot === "string" ? row.hot : undefined),
+        url,
+        mobileUrl: url,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  if (data.length === 0) return null;
+  return {
+    name: "kuaishou",
+    title: "快手",
+    type: "热榜",
+    description: "快手，拥抱每一种生活",
+    link: "https://www.kuaishou.com/",
+    total: data.length,
+    data,
   };
+}
 
-  let html: string;
-  try {
-    html = await fetchTextWithFetch(url, timeoutMs, headers);
-  } catch {
-    html = await fetchTextWithCurl(url, timeoutMs, headers);
-  }
-
-  if (!html || html.trim() === "") {
-    throw new Error("Kuaishou page returned empty response");
-  }
-
+function parseApolloHtmlToPayload(html: string): KuaishouPayload | null {
   const stateJson = extractJsonObjectAfterMarker(html, "window.__APOLLO_STATE__=");
   if (!stateJson) {
-    throw new Error("Kuaishou APOLLO_STATE not found");
+    return null;
   }
 
   const parsed = JSON.parse(stateJson) as { defaultClient?: Record<string, unknown> };
   const client = parsed.defaultClient;
   if (!client) {
-    throw new Error("Kuaishou defaultClient not found");
+    return null;
   }
 
   const rootKey = findVisionHotRankKey(client);
   if (!rootKey) {
-    throw new Error("Kuaishou visionHotRank key not found");
+    return null;
   }
 
   const root = client[rootKey] as { items?: Array<Record<string, unknown>> } | undefined;
@@ -242,6 +280,10 @@ export async function fetchKuaishouHotList(timeoutMs: number): Promise<KuaishouP
     })
     .filter((value): value is NonNullable<typeof value> => value !== null);
 
+  if (data.length === 0) {
+    return null;
+  }
+
   return {
     name: "kuaishou",
     title: "快手",
@@ -251,4 +293,62 @@ export async function fetchKuaishouHotList(timeoutMs: number): Promise<KuaishouP
     total: data.length,
     data,
   };
+}
+
+async function fetchText(url: string, timeoutMs: number, headers: Record<string, string>): Promise<string> {
+  try {
+    return await fetchTextWithFetch(url, timeoutMs, headers);
+  } catch {
+    return fetchTextWithCurl(url, timeoutMs, headers);
+  }
+}
+
+export async function fetchKuaishouHotList(timeoutMs: number): Promise<KuaishouPayload> {
+  const headers: Record<string, string> = {
+    accept: "text/html,application/xhtml+xml,application/json",
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  };
+  const mirrorUrl = getOptionalKuaishouMirrorUrl();
+  const candidates = [
+    "https://www.kuaishou.com/?isHome=1",
+    "https://www.kuaishou.com/",
+    "https://m.kuaishou.com/",
+    ...(mirrorUrl ? [mirrorUrl] : []),
+  ];
+  const perTimeout = Math.max(700, Math.floor(timeoutMs / Math.max(1, candidates.length * 2)));
+  let lastError: unknown;
+
+  for (const url of candidates) {
+    try {
+      const text = await fetchText(url, perTimeout, headers);
+      if (!text || !text.trim()) {
+        lastError = new Error("Kuaishou page returned empty response");
+        continue;
+      }
+
+      const trimmed = text.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const json = JSON.parse(trimmed) as MirrorJsonPayload;
+          const mirrorPayload = normalizeMirrorJson(json);
+          if (mirrorPayload) {
+            return mirrorPayload;
+          }
+        } catch {
+          // continue to html parser
+        }
+      }
+
+      const parsed = parseApolloHtmlToPayload(text);
+      if (parsed) {
+        return parsed;
+      }
+      lastError = new Error("Kuaishou hot list parse failed");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to fetch kuaishou hot list");
 }

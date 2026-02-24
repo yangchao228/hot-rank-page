@@ -1,6 +1,6 @@
 # Hot Rank Service
 
-基于 [imsyy/DailyHotApi](https://github.com/imsyy/DailyHotApi) 的热榜服务，采用“上游代理 + 本地缓存（TTL + SWR）”架构。
+本地抓取版热榜服务，采用“本地抓取器 + 本地缓存（TTL + SWR）”架构。
 
 ## 功能
 
@@ -8,25 +8,23 @@
 - 统一标准化 API：`/api/v1/sources`、`/api/v1/hot/:source`、`/api/v1/hot/aggregate`
 - RSS 兼容：`/:source?rss=true`
 - 本地缓存：内存 SWR（可选 Redis 二级缓存）
-- 基础容错：重试、熔断、过期缓存降级
+- 基础容错：过期缓存降级（SWR）
 - 公网限流：普通 API 与聚合 API 分级限流
-- 集中展示页：`/`（全量源 + 分类 tab）
+- 集中展示页：`/`（本地可用源集中展示）
+- 状态检查页：`/status`
 - 健康检查：`/healthz`
 
-## 首版榜单（12 个）
+## 当前支持榜单（本地可用 9 个）
 
+- `douyin`
+- `kuaishou`
 - `weibo`
 - `zhihu`
 - `baidu`
 - `bilibili`
-- `douyin`
-- `kuaishou`
-- `juejin`
 - `36kr`
-- `ithome`
 - `toutiao`
 - `v2ex`
-- `github`
 
 ## 快速开始
 
@@ -62,14 +60,13 @@ npm run start
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `PORT` | `6688` | 服务端口 |
-| `UPSTREAM_BASE_URL` | `https://api-hot.imsyy.top` | DailyHotApi 上游地址 |
 | `ZHIHU_COOKIE` | 空 | 可选：知乎 Cookie（用于提升请求稳定性） |
 | `CACHE_TTL_SECONDS` | `300` | Fresh 缓存时长 |
 | `CACHE_STALE_SECONDS` | `1800` | Stale 窗口时长 |
-| `REQUEST_TIMEOUT_MS` | `6000` | 上游请求超时 |
-| `RETRY_TIMES` | `2` | 上游失败重试次数 |
-| `CIRCUIT_FAIL_THRESHOLD` | `3` | 熔断失败阈值 |
-| `CIRCUIT_COOLDOWN_MS` | `30000` | 熔断冷却时间 |
+| `REQUEST_TIMEOUT_MS` | `6000` | 本地抓取请求超时（用于各源抓取器） |
+| `BILIBILI_MIRROR_API_URL` | 空 | 可选：B站热榜镜像 API（默认关闭，需返回兼容 JSON） |
+| `KUAISHOU_MIRROR_URL` | 空 | 可选：快手热榜镜像 URL（默认关闭，可返回 HTML 或 JSON） |
+| `V2EX_MIRROR_BASE_URL` | 空 | 可选：V2EX 第三方镜像基地址（默认关闭，仅本地配置开启） |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | 限流窗口 |
 | `RATE_LIMIT_MAX` | `120` | 普通接口每窗口最大请求/IP |
 | `AGGREGATE_RATE_LIMIT_MAX` | `30` | 聚合接口每窗口最大请求/IP |
@@ -88,7 +85,7 @@ npm run start
 
 #### `GET /:source`
 
-兼容 DailyHotApi 核心接口。
+兼容历史核心接口风格（本地-only 实现）。
 
 支持公共参数：
 
@@ -96,13 +93,13 @@ npm run start
 - `cache=false`: 跳过缓存
 - `rss=true`: 返回 RSS XML
 
-其余参数按源白名单透传（例如 `type`）。
+当前本地源不使用额外参数，`limit/cache/rss` 仍可用。
 
 ### 统一接口
 
 #### `GET /api/v1/sources`
 
-返回可用源及参数说明。
+返回当前本地可用源（9 个）及参数说明。
 
 #### `GET /api/v1/hot/:source`
 
@@ -146,7 +143,9 @@ npm run start
 
 #### `GET /healthz`
 
-返回服务健康、上游连通性与缓存状态。
+返回服务健康与缓存状态。
+
+在当前版本中，`/healthz` 会明确标识 `local-only` 模式，上游字段仅用于说明“已禁用”。
 
 ## Docker
 
@@ -182,7 +181,10 @@ npm run test:run
 
 ## 故障排查
 
-- 上游故障：查看 `/healthz` 的 `upstream` 字段和服务日志。
+- 本地模式说明：查看 `/healthz` 的 `mode=local-only` 与 `upstream.disabled=true`。
+- 某个源 502：通常是目标站点网络不可达或反爬导致，先查看 `/status` 页面与服务日志。
+- `v2ex` 502：可在本地 `.env` 配置 `V2EX_MIRROR_BASE_URL` 启用镜像 fallback（默认关闭）。
+- `bilibili` / `kuaishou` 502：若本机网络或 DNS 不可达，可分别配置 `BILIBILI_MIRROR_API_URL` / `KUAISHOU_MIRROR_URL` 启用本地镜像 fallback。
 - 频繁 429：调高限流配置或在网关层做分流。
 - Redis 未启用：确认 `USE_REDIS=true` 且 `REDIS_URL` 可连接。
 

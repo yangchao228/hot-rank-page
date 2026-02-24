@@ -16,8 +16,19 @@ export function createUiRouter(): Hono {
     return c.html(html);
   });
 
+  app.get("/status", async (c) => {
+    const html = await readPublicFile("status.html");
+    return c.html(html);
+  });
+
   app.get("/app.js", async (c) => {
     const js = await readPublicFile("app.js");
+    c.header("content-type", "application/javascript; charset=utf-8");
+    return c.body(js);
+  });
+
+  app.get("/status.js", async (c) => {
+    const js = await readPublicFile("status.js");
     c.header("content-type", "application/javascript; charset=utf-8");
     return c.body(js);
   });
