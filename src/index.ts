@@ -11,12 +11,23 @@ const app = createApp({
   hotService,
 });
 
-serve({
-  fetch: app.fetch,
-  port: env.PORT,
-});
+const server = serve(
+  {
+    fetch: app.fetch,
+    port: env.PORT,
+  },
+  () => {
+    logger.info("server_started", {
+      port: env.PORT,
+      env: env.NODE_ENV,
+    });
+  },
+);
 
-logger.info("server_started", {
-  port: env.PORT,
-  env: env.NODE_ENV,
+server.on("error", (error) => {
+  logger.error("server_start_failed", {
+    port: env.PORT,
+    env: env.NODE_ENV,
+    error: error instanceof Error ? error.message : String(error),
+  });
 });

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { requestJson } from "./http.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,15 @@ interface KuaishouPayload {
 interface MirrorJsonPayload {
   data?: Array<Record<string, unknown>>;
   items?: Array<Record<string, unknown>>;
+}
+
+interface TcslwKuaishouResponse extends MirrorJsonPayload {
+  code?: number;
+  success?: boolean;
+  msg?: string;
+  subtitle?: string;
+  update_time?: string;
+  total?: number;
 }
 
 function getOptionalKuaishouMirrorUrl(): string | null {
@@ -200,9 +210,21 @@ function normalizeMirrorJson(json: MirrorJsonPayload): KuaishouPayload | null {
       return {
         id: typeof row.id === "string" || typeof row.id === "number" ? String(row.id) : `kuaishou-${index + 1}`,
         title,
-        cover: typeof row.cover === "string" ? row.cover : undefined,
+        cover:
+          (typeof row.cover === "string" ? row.cover : undefined) ??
+          ((((row.extra ?? {}) as Record<string, unknown>).icon as string | undefined) ||
+            (((row.extra ?? {}) as Record<string, unknown>).original_url as string | undefined)),
         timestamp: typeof row.timestamp === "string" ? row.timestamp : undefined,
-        hot: typeof row.hot === "number" ? row.hot : parseChineseNumber(typeof row.hot === "string" ? row.hot : undefined),
+        hot:
+          typeof row.hot === "number"
+            ? row.hot
+            : parseChineseNumber(
+                typeof row.hot === "string"
+                  ? row.hot
+                  : typeof row.heat === "string"
+                    ? row.heat
+                    : undefined,
+              ),
         url,
         mobileUrl: url,
       };
@@ -219,6 +241,19 @@ function normalizeMirrorJson(json: MirrorJsonPayload): KuaishouPayload | null {
     total: data.length,
     data,
   };
+}
+
+async function fetchTcslwKuaishouHotList(timeoutMs: number): Promise<KuaishouPayload | null> {
+  const json = await requestJson<TcslwKuaishouResponse>("https://api.tcslw.cn/api/hotlist/kuaishou", {
+    timeoutMs,
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    },
+    maxBufferBytes: 8 * 1024 * 1024,
+  });
+  return normalizeMirrorJson(json);
 }
 
 function parseApolloHtmlToPayload(html: string): KuaishouPayload | null {
@@ -310,14 +345,25 @@ export async function fetchKuaishouHotList(timeoutMs: number): Promise<KuaishouP
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
   };
   const mirrorUrl = getOptionalKuaishouMirrorUrl();
-  const candidates = [
+  const officialCandidates = [
     "https://www.kuaishou.com/?isHome=1",
     "https://www.kuaishou.com/",
     "https://m.kuaishou.com/",
-    ...(mirrorUrl ? [mirrorUrl] : []),
   ];
-  const perTimeout = Math.max(700, Math.floor(timeoutMs / Math.max(1, candidates.length * 2)));
+  const candidates = [...(mirrorUrl ? [mirrorUrl] : []), ...officialCandidates];
+  const perTimeout = Math.max(1500, Math.floor(timeoutMs / Math.max(1, candidates.length * 2)));
   let lastError: unknown;
+
+  // Prefer a stable third-party JSON mirror before hitting the official Kuaishou pages.
+  try {
+    const tcslwPayload = await fetchTcslwKuaishouHotList(Math.max(2500, Math.floor(timeoutMs / 2)));
+    if (tcslwPayload) {
+      return tcslwPayload;
+    }
+    lastError = new Error("tcslw kuaishou mirror returned empty data");
+  } catch (error) {
+    lastError = error;
+  }
 
   for (const url of candidates) {
     try {

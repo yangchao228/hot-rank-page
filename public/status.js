@@ -13,6 +13,8 @@ const fallbackJudge = document.getElementById("fallbackJudge");
 const fallbackJudgeDesc = document.getElementById("fallbackJudgeDesc");
 const cacheExplain = document.getElementById("cacheExplain");
 const cacheExplainDesc = document.getElementById("cacheExplainDesc");
+const sourceErrorHint = document.getElementById("sourceErrorHint");
+const sourceErrorList = document.getElementById("sourceErrorList");
 const schedulerSummary = document.getElementById("schedulerSummary");
 const schedulerSourceGrid = document.getElementById("schedulerSourceGrid");
 
@@ -104,12 +106,113 @@ function schedulerStateLabel(state) {
   return "等待首次刷新";
 }
 
+function pullEntryTone(entry) {
+  if (!entry) return "neutral";
+  return entry.status === "success" ? "ok" : "error";
+}
+
+function pullEntryLabel(entry) {
+  if (!entry) return "未知";
+  return entry.status === "success" ? "成功" : "失败";
+}
+
+function renderRecentPulls(state) {
+  const entries = Array.isArray(state?.recentPulls) ? state.recentPulls.slice(0, 3) : [];
+  if (entries.length === 0) {
+    return '<div class="scheduler-pull-empty">暂无最近拉取记录（等待调度执行）。</div>';
+  }
+
+  return `
+    <div class="scheduler-pull-list">
+      ${entries
+        .map((entry) => {
+          const tone = pullEntryTone(entry);
+          const label = pullEntryLabel(entry);
+          const mode = entry?.mode === "retry" ? "重试" : "刷新";
+          const duration =
+            typeof entry?.durationMs === "number" && Number.isFinite(entry.durationMs)
+              ? `${Math.max(0, Math.round(entry.durationMs))} ms`
+              : "-";
+          const error = entry?.error ? `<code>${escapeHtml(String(entry.error))}</code>` : "";
+
+          return `
+            <div class="scheduler-pull-item ${tone}">
+              <div class="scheduler-pull-row">
+                <span class="scheduler-pill ${tone}">${escapeHtml(label)}</span>
+                <span class="scheduler-pull-time">${escapeHtml(formatTime(entry?.at))}</span>
+              </div>
+              <div class="scheduler-pull-meta">${escapeHtml(mode)} · 耗时 ${escapeHtml(duration)}</div>
+              ${error ? `<div class="scheduler-pull-error">${error}</div>` : ""}
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderSourceErrorSummary(scheduler) {
+  if (!sourceErrorHint || !sourceErrorList) return;
+
+  if (!scheduler || !Array.isArray(scheduler.sources)) {
+    setText(sourceErrorHint, "当前版本未提供源级错误明细");
+    sourceErrorList.innerHTML = '<div class="source-error-empty">未获取到后端采集错误信息。</div>';
+    return;
+  }
+
+  const rows = [...scheduler.sources];
+  const errored = rows
+    .filter((state) => state?.lastError || Number(state?.consecutiveFailures || 0) > 0 || state?.gaveUpInCurrentCycle)
+    .sort((a, b) => {
+      const at = a?.lastFailureAt ? Date.parse(a.lastFailureAt) : 0;
+      const bt = b?.lastFailureAt ? Date.parse(b.lastFailureAt) : 0;
+      return bt - at;
+    });
+
+  setText(
+    sourceErrorHint,
+    "这里只显示后端采集/调度错误（如目标站点不可达、解析失败、超时）。前端缓存或浏览器脚本缓存问题不会出现在这里。",
+  );
+
+  if (errored.length === 0) {
+    sourceErrorList.innerHTML = '<div class="source-error-empty">当前没有源级采集错误，后端采集状态正常。</div>';
+    return;
+  }
+
+  sourceErrorList.innerHTML = errored
+    .map((state) => {
+      const sourceId = String(state?.source || "-");
+      const meta = SOURCE_META[sourceId] || { name: sourceId, icon: "•" };
+      const stateLabel = schedulerStateLabel(state);
+      const failureTime = formatTime(state?.lastFailureAt);
+      const errText = state?.lastError ? escapeHtml(String(state.lastError)) : "无错误文本（仅失败计数）";
+      return `
+        <article class="source-error-item">
+          <div class="source-error-head">
+            <div class="source-error-source">
+              <span class="source-error-icon" aria-hidden="true">${meta.icon}</span>
+              <strong>${escapeHtml(meta.name)}</strong>
+              <code>${escapeHtml(sourceId)}</code>
+            </div>
+            <span class="scheduler-pill ${schedulerStateTone(state)}">${escapeHtml(stateLabel)}</span>
+          </div>
+          <div class="source-error-meta">
+            上次失败 ${escapeHtml(failureTime)} · 连续失败 ${escapeHtml(String(state?.consecutiveFailures ?? 0))} 次 · 本轮重试 ${escapeHtml(String(state?.retriesInCurrentCycle ?? 0))} 次
+          </div>
+          <div class="source-error-text">${errText}</div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderSchedulerSources(scheduler) {
   if (!schedulerSourceGrid) return;
 
   if (!scheduler || !Array.isArray(scheduler.sources)) {
     setText(schedulerSummary, "当前版本未提供调度器明细");
     schedulerSourceGrid.innerHTML = '<div class="scheduler-source-empty">未获取到各源刷新状态。</div>';
+    renderSourceErrorSummary(null);
     return;
   }
 
@@ -159,6 +262,10 @@ function renderSchedulerSources(scheduler) {
             <div class="scheduler-kv"><span>累计刷新</span><strong>${escapeHtml(String(state?.totalRefreshes ?? 0))}</strong></div>
             <div class="scheduler-kv"><span>累计失败</span><strong>${escapeHtml(String(state?.totalFailures ?? 0))}</strong></div>
           </div>
+          <div class="scheduler-pull-block">
+            <div class="scheduler-pull-title">最近 3 次拉取</div>
+            ${renderRecentPulls(state)}
+          </div>
           ${
             lastError
               ? `<div class="scheduler-error-line"><span>最近错误</span><code>${lastError}</code></div>`
@@ -168,6 +275,8 @@ function renderSchedulerSources(scheduler) {
       `;
     })
     .join("");
+
+  renderSourceErrorSummary(scheduler);
 }
 
 function renderHealth(result) {
@@ -279,6 +388,10 @@ async function loadHealth() {
     setText(fallbackJudgeDesc, "-");
     setText(cacheExplain, "-");
     setText(cacheExplainDesc, "-");
+    setText(sourceErrorHint, "-");
+    if (sourceErrorList) {
+      sourceErrorList.innerHTML = '<div class="source-error-empty">状态加载失败，无法获取源级错误信息。</div>';
+    }
     setText(schedulerSummary, "-");
     if (schedulerSourceGrid) {
       schedulerSourceGrid.innerHTML = '<div class="scheduler-source-empty">状态加载失败，无法获取各源刷新状态。</div>';

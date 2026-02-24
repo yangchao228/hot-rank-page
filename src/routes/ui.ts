@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const publicDir = path.join(process.cwd(), "public");
+const publicDir = path.resolve(new URL("../../public", import.meta.url).pathname);
 
 async function readPublicFile(fileName: string): Promise<string> {
   return fs.readFile(path.join(publicDir, fileName), "utf8");

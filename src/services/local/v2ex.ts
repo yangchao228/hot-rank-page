@@ -166,6 +166,33 @@ function getOptionalMirrorBaseUrl(): string | null {
   }
 }
 
+function parseJinaWrappedJsonArray<T>(text: string): T[] | null {
+  const body = text.trim();
+  if (!body) return null;
+  if (body.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(body);
+      return Array.isArray(parsed) ? (parsed as T[]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const markerIndex = body.indexOf("Markdown Content:");
+  const searchStart = markerIndex >= 0 ? markerIndex : 0;
+  const start = body.indexOf("[", searchStart);
+  if (start < 0) return null;
+  const end = body.lastIndexOf("]");
+  if (end <= start) return null;
+
+  try {
+    const parsed = JSON.parse(body.slice(start, end + 1));
+    return Array.isArray(parsed) ? (parsed as T[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchV2exHotList(timeoutMs: number): Promise<V2exPayload> {
   const headers = {
     accept: "application/json, text/plain, */*",
@@ -175,40 +202,68 @@ export async function fetchV2exHotList(timeoutMs: number): Promise<V2exPayload> 
   } as const;
 
   const mirrorBase = getOptionalMirrorBaseUrl();
+  const builtinMirrorBases = ["https://global.v2ex.co", "https://fast.v2ex.com"] as const;
   const apiCandidates = [
     "https://www.v2ex.com/api/topics/hot.json",
     "https://v2ex.com/api/topics/hot.json",
     "https://www.v2ex.com/api/topics/latest.json",
   ] as const;
-  const mirrorApiCandidates = mirrorBase
-    ? [
-        `${mirrorBase}/api/topics/hot.json`,
-        `${mirrorBase}/api/topics/latest.json`,
-      ]
-    : [];
+  const mirrorBases = [mirrorBase, ...builtinMirrorBases]
+    .filter((value): value is string => Boolean(value))
+    .filter((value, index, list) => list.indexOf(value) === index);
+  const mirrorApiCandidates = mirrorBases.flatMap((base) => [
+    `${base}/api/topics/hot.json`,
+    `${base}/api/topics/latest.json`,
+  ]);
+  const jinaApiCandidates = [
+    "https://r.jina.ai/http://www.v2ex.com/api/topics/hot.json",
+    "https://r.jina.ai/http://www.v2ex.com/api/topics/latest.json",
+  ] as const;
   const htmlCandidates = ["https://www.v2ex.com/?tab=hot", "https://v2ex.com/?tab=hot"] as const;
-  const mirrorHtmlCandidates = mirrorBase ? [`${mirrorBase}/?tab=hot`] : [];
+  const mirrorHtmlCandidates = mirrorBases.map((base) => `${base}/?tab=hot`);
   const rssCandidates = ["https://www.v2ex.com/index.xml", "https://v2ex.com/index.xml"] as const;
-  const mirrorRssCandidates = mirrorBase ? [`${mirrorBase}/index.xml`] : [];
+  const mirrorRssCandidates = mirrorBases.map((base) => `${base}/index.xml`);
   // requestText/requestJson may try fetch then curl, so divide budget again to cap worst-case latency.
   const totalAttempts =
     apiCandidates.length +
     mirrorApiCandidates.length +
+    jinaApiCandidates.length +
     htmlCandidates.length +
     mirrorHtmlCandidates.length +
     rssCandidates.length +
     mirrorRssCandidates.length;
-  const perStepTimeout = Math.max(600, Math.floor(timeoutMs / Math.max(1, totalAttempts * 2)));
+  const perStepTimeout = Math.max(1500, Math.floor(timeoutMs / Math.max(1, totalAttempts * 2)));
+  const jinaTimeout = Math.max(2500, perStepTimeout);
+  const mirrorApiTimeout = Math.max(4500, perStepTimeout);
 
   let lastError: unknown;
 
-  for (const apiUrl of [...apiCandidates, ...mirrorApiCandidates]) {
+  for (const apiUrl of [...mirrorApiCandidates, ...jinaApiCandidates, ...apiCandidates]) {
     try {
-      const rows = await requestJson<V2exTopic[]>(apiUrl, {
-        timeoutMs: perStepTimeout,
-        headers,
-        maxBufferBytes: 5 * 1024 * 1024,
-      });
+      let rows: V2exTopic[] = [];
+      if (apiUrl.includes("r.jina.ai/")) {
+        const text = await requestText(apiUrl, {
+          timeoutMs: jinaTimeout,
+          headers: {
+            accept: "text/plain, */*",
+            "user-agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          },
+          maxBufferBytes: 8 * 1024 * 1024,
+        });
+        rows = parseJinaWrappedJsonArray<V2exTopic>(text) ?? [];
+      } else {
+        const apiTimeout =
+          apiUrl.includes("global.v2ex.co") || apiUrl.includes("fast.v2ex.com")
+            ? mirrorApiTimeout
+            : perStepTimeout;
+        rows =
+          (await requestJson<V2exTopic[]>(apiUrl, {
+            timeoutMs: apiTimeout,
+            headers,
+            maxBufferBytes: 5 * 1024 * 1024,
+          })) ?? [];
+      }
 
       const list = Array.isArray(rows) ? rows : [];
       const data = list
