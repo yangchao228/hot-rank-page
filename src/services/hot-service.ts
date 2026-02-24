@@ -18,6 +18,7 @@ import { CircuitOpenError, UpstreamClient } from "./upstream-client.js";
 import { fetchZhihuHotList } from "./local/zhihu.js";
 import { fetchDouyinHotList } from "./local/douyin.js";
 import { fetchKuaishouHotList } from "./local/kuaishou.js";
+import { fetchWeiboHotList } from "./local/weibo.js";
 import { buildRssXml } from "../utils/rss.js";
 
 export interface UpstreamAdapter {
@@ -47,10 +48,10 @@ export type CompatResult = CompatJsonResult | CompatRssResult;
 
 const LOCAL_FALLBACK_TIMEOUT_MS = 8000;
 
-type LocalFallbackSource = "zhihu" | "douyin" | "kuaishou";
+type LocalFallbackSource = "weibo" | "zhihu" | "douyin" | "kuaishou";
 
 function isLocalFallbackSource(source: SourceId): source is LocalFallbackSource {
-  return source === "zhihu" || source === "douyin" || source === "kuaishou";
+  return source === "weibo" || source === "zhihu" || source === "douyin" || source === "kuaishou";
 }
 
 function toNumericLimit(value: string | undefined, fallback: number): number {
@@ -188,6 +189,9 @@ export class HotService {
   }
 
   private async fetchLocalFallback(source: SourceId): Promise<Record<string, unknown>> {
+    if (source === "weibo") {
+      return fetchWeiboHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
+    }
     if (source === "zhihu") {
       return fetchZhihuHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
     }
