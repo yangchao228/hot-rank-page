@@ -38,6 +38,18 @@ function formatTime(value) {
   return date.toLocaleString();
 }
 
+function buildItemMeta(item, feed) {
+  const hiddenDescSources = new Set(["zhihu", "douyin", "kuaishou"]);
+  const timeText = formatTime(item.timestamp || feed.updateTime);
+  const normalizedTime = timeText === "-" ? "时间未知" : timeText;
+  const parts = [`时间 ${normalizedTime}`];
+  const shouldShowDesc = item.desc && !hiddenDescSources.has(item.source || feed.source);
+  if (shouldShowDesc) {
+    parts.unshift(item.desc);
+  }
+  return parts.join(" · ");
+}
+
 function renderTabs(categories) {
   categoryTabs.innerHTML = "";
   const allTab = document.createElement("button");
@@ -132,12 +144,10 @@ function renderBoard() {
         link.textContent = item.title || "(untitled)";
 
         const meta = document.createElement("span");
-        meta.textContent = item.desc || "";
+        meta.textContent = buildItemMeta(item, feed);
 
         row.appendChild(link);
-        if (item.desc) {
-          row.appendChild(meta);
-        }
+        row.appendChild(meta);
         list.appendChild(row);
       });
 
