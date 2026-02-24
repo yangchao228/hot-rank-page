@@ -12,6 +12,7 @@
 - 公网限流：普通 API 与聚合 API 分级限流
 - 集中展示页：`/`（本地可用源集中展示）
 - 状态检查页：`/status`
+- 状态页增强：每个源展示最近 3 次拉取记录（时间 + 成功/失败 + 耗时 + 错误摘要）
 - 健康检查：`/healthz`
 
 ## 当前支持榜单（本地可用 9 个）
@@ -147,6 +148,10 @@ npm run start
 
 在当前版本中，`/healthz` 会明确标识 `local-only` 模式，上游字段仅用于说明“已禁用”。
 
+调度器源状态字段补充：
+
+- `data.scheduler.sources[].recentPulls`：最近 3 次拉取记录，包含 `at/status/mode/durationMs/error?`。
+
 ## Docker
 
 ### Build
@@ -182,7 +187,7 @@ npm run test:run
 ## 故障排查
 
 - 本地模式说明：查看 `/healthz` 的 `mode=local-only` 与 `upstream.disabled=true`。
-- 某个源 502：通常是目标站点网络不可达或反爬导致，先查看 `/status` 页面与服务日志。
+- 某个源 502：通常是目标站点网络不可达或反爬导致，先查看 `/status` 页面（包含最近 3 次拉取记录）与服务日志。
 - `v2ex` 502：可在本地 `.env` 配置 `V2EX_MIRROR_BASE_URL` 启用镜像 fallback（默认关闭）。
 - `bilibili` / `kuaishou` 502：若本机网络或 DNS 不可达，可分别配置 `BILIBILI_MIRROR_API_URL` / `KUAISHOU_MIRROR_URL` 启用本地镜像 fallback。
 - 频繁 429：调高限流配置或在网关层做分流。
