@@ -1,9 +1,15 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
+import { HotService } from "./services/hot-service.js";
 import { logger } from "./utils/logger.js";
 
-const app = createApp();
+const hotService = new HotService();
+hotService.startBackgroundRefreshScheduler();
+
+const app = createApp({
+  hotService,
+});
 
 serve({
   fetch: app.fetch,

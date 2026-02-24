@@ -13,8 +13,22 @@ const fallbackJudge = document.getElementById("fallbackJudge");
 const fallbackJudgeDesc = document.getElementById("fallbackJudgeDesc");
 const cacheExplain = document.getElementById("cacheExplain");
 const cacheExplainDesc = document.getElementById("cacheExplainDesc");
+const schedulerSummary = document.getElementById("schedulerSummary");
+const schedulerSourceGrid = document.getElementById("schedulerSourceGrid");
 
 const LOCAL_FALLBACK_SOURCES = ["抖音", "快手", "微博", "知乎", "百度", "哔哩哔哩", "36氪", "今日头条", "V2EX"];
+const SOURCE_ORDER = ["douyin", "kuaishou", "weibo", "zhihu", "baidu", "bilibili", "36kr", "toutiao", "v2ex"];
+const SOURCE_META = {
+  douyin: { name: "抖音", icon: "🎵" },
+  kuaishou: { name: "快手", icon: "⚡" },
+  weibo: { name: "微博", icon: "🔥" },
+  zhihu: { name: "知乎", icon: "📘" },
+  baidu: { name: "百度", icon: "🔎" },
+  bilibili: { name: "哔哩哔哩", icon: "📺" },
+  "36kr": { name: "36氪", icon: "📰" },
+  toutiao: { name: "今日头条", icon: "🧭" },
+  v2ex: { name: "V2EX", icon: "💬" },
+};
 
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -54,6 +68,106 @@ function setStatusTone(element, tone) {
 function setText(el, value) {
   if (!el) return;
   el.textContent = value;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatDurationMs(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "-";
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes > 0 ? `${hours} 小时 ${restMinutes} 分钟` : `${hours} 小时`;
+}
+
+function schedulerStateTone(state) {
+  if (!state) return "neutral";
+  if (state.gaveUpInCurrentCycle) return "error";
+  if (Number(state.consecutiveFailures || 0) > 0) return "warn";
+  if (state.lastSuccessAt) return "ok";
+  return "neutral";
+}
+
+function schedulerStateLabel(state) {
+  if (!state) return "未知";
+  if (state.gaveUpInCurrentCycle) return "本轮已放弃";
+  if (Number(state.consecutiveFailures || 0) > 0) return "重试中";
+  if (state.lastSuccessAt) return "正常";
+  return "等待首次刷新";
+}
+
+function renderSchedulerSources(scheduler) {
+  if (!schedulerSourceGrid) return;
+
+  if (!scheduler || !Array.isArray(scheduler.sources)) {
+    setText(schedulerSummary, "当前版本未提供调度器明细");
+    schedulerSourceGrid.innerHTML = '<div class="scheduler-source-empty">未获取到各源刷新状态。</div>';
+    return;
+  }
+
+  const rows = [...scheduler.sources].sort((a, b) => {
+    const ai = SOURCE_ORDER.indexOf(String(a?.source || ""));
+    const bi = SOURCE_ORDER.indexOf(String(b?.source || ""));
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  const summaryParts = [
+    scheduler.started ? "调度器已启动" : "调度器未启动",
+    `共 ${rows.length} 个源`,
+    `刷新周期 ${formatDurationMs(scheduler.refreshIntervalMs)}`,
+    `失败重试 ${formatDurationMs(scheduler.retryIntervalMs)}`,
+    typeof scheduler.maxConsecutiveFailures === "number" ? `连续失败上限 ${scheduler.maxConsecutiveFailures} 次` : null,
+    typeof scheduler.jitterMaxMs === "number" ? `随机抖动 ${formatDurationMs(scheduler.jitterMaxMs)} 内` : null,
+  ].filter(Boolean);
+  setText(schedulerSummary, summaryParts.join(" · "));
+
+  schedulerSourceGrid.innerHTML = rows
+    .map((state) => {
+      const sourceId = String(state?.source || "-");
+      const meta = SOURCE_META[sourceId] || { name: sourceId, icon: "•" };
+      const tone = schedulerStateTone(state);
+      const label = schedulerStateLabel(state);
+      const lastError = state?.lastError ? escapeHtml(state.lastError) : "";
+
+      return `
+        <article class="scheduler-source-card">
+          <div class="scheduler-source-head">
+            <div class="scheduler-source-name-wrap">
+              <span class="scheduler-source-icon" aria-hidden="true">${meta.icon}</span>
+              <div>
+                <div class="scheduler-source-name">${escapeHtml(meta.name)}</div>
+                <div class="scheduler-source-id">${escapeHtml(sourceId)}</div>
+              </div>
+            </div>
+            <span class="scheduler-pill ${tone}">${escapeHtml(label)}</span>
+          </div>
+          <div class="scheduler-kv-grid">
+            <div class="scheduler-kv"><span>下次刷新</span><strong>${escapeHtml(formatTime(state?.nextRunAt))}</strong></div>
+            <div class="scheduler-kv"><span>上次成功</span><strong>${escapeHtml(formatTime(state?.lastSuccessAt))}</strong></div>
+            <div class="scheduler-kv"><span>上次失败</span><strong>${escapeHtml(formatTime(state?.lastFailureAt))}</strong></div>
+            <div class="scheduler-kv"><span>连续失败</span><strong>${escapeHtml(String(state?.consecutiveFailures ?? 0))}</strong></div>
+            <div class="scheduler-kv"><span>本轮重试</span><strong>${escapeHtml(String(state?.retriesInCurrentCycle ?? 0))}</strong></div>
+            <div class="scheduler-kv"><span>本轮状态</span><strong>${state?.gaveUpInCurrentCycle ? "已放弃" : "进行中"}</strong></div>
+            <div class="scheduler-kv"><span>累计刷新</span><strong>${escapeHtml(String(state?.totalRefreshes ?? 0))}</strong></div>
+            <div class="scheduler-kv"><span>累计失败</span><strong>${escapeHtml(String(state?.totalFailures ?? 0))}</strong></div>
+          </div>
+          ${
+            lastError
+              ? `<div class="scheduler-error-line"><span>最近错误</span><code>${lastError}</code></div>`
+              : ""
+          }
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderHealth(result) {
@@ -146,6 +260,7 @@ function renderHealth(result) {
     setStatusTone(cacheExplain, "ok");
   }
 
+  renderSchedulerSources(data.scheduler);
   statusJson.textContent = JSON.stringify(payload, null, 2);
 }
 
@@ -164,6 +279,10 @@ async function loadHealth() {
     setText(fallbackJudgeDesc, "-");
     setText(cacheExplain, "-");
     setText(cacheExplainDesc, "-");
+    setText(schedulerSummary, "-");
+    if (schedulerSourceGrid) {
+      schedulerSourceGrid.innerHTML = '<div class="scheduler-source-empty">状态加载失败，无法获取各源刷新状态。</div>';
+    }
     statusJson.textContent = "{}";
   }
 }

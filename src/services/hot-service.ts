@@ -46,6 +46,25 @@ interface CompatRssResult {
 export type CompatResult = CompatJsonResult | CompatRssResult;
 
 const LOCAL_FALLBACK_TIMEOUT_MS = 8000;
+const SCHEDULE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+const SCHEDULE_JITTER_MAX_MS = 5 * 60 * 1000;
+const SCHEDULE_RETRY_INTERVAL_MS = 5 * 60 * 1000;
+const SCHEDULE_MAX_CONSECUTIVE_FAILURES = 3;
+const SCHEDULE_CACHE_TTL_SECONDS = 60 * 60;
+const SCHEDULE_CACHE_STALE_SECONDS = 30 * 60;
+
+interface SourceRefreshState {
+  source: SourceId;
+  nextRunAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastError?: string;
+  consecutiveFailures: number;
+  retriesInCurrentCycle: number;
+  totalRefreshes: number;
+  totalFailures: number;
+  gaveUpInCurrentCycle: boolean;
+}
 
 function toNumericLimit(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -126,9 +145,23 @@ function buildRssFromCompatPayload(source: SourceId, payload: Record<string, unk
 
 export class HotService {
   private readonly cache: SwrCache;
+  private schedulerStarted = false;
+  private schedulerEnabled = process.env.NODE_ENV !== "test";
+  private readonly schedulerTimers = new Map<SourceId, ReturnType<typeof setTimeout>>();
+  private readonly schedulerStates = new Map<SourceId, SourceRefreshState>();
 
   constructor(deps: HotServiceDeps = {}) {
     this.cache = deps.cache ?? new SwrCache();
+    for (const source of SOURCE_DEFINITIONS) {
+      this.schedulerStates.set(source.id, {
+        source: source.id,
+        consecutiveFailures: 0,
+        retriesInCurrentCycle: 0,
+        totalRefreshes: 0,
+        totalFailures: 0,
+        gaveUpInCurrentCycle: false,
+      });
+    }
   }
 
   listSources() {
@@ -175,6 +208,19 @@ export class HotService {
     return `${source}:${format}:${sorted}`;
   }
 
+  private normalizedCacheKey(
+    source: SourceId,
+    query: Record<string, string>,
+    format: "json" | "rss",
+  ): string {
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(query)) {
+      if (key === "limit" || key === "cache" || key === "rss") continue;
+      normalized[key] = value;
+    }
+    return this.cacheKey(source, normalized, format);
+  }
+
   private async fetchLocalFallback(source: SourceId): Promise<Record<string, unknown>> {
     if (source === "weibo") {
       return fetchWeiboHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
@@ -204,6 +250,126 @@ export class HotService {
       return fetchV2exHotList(LOCAL_FALLBACK_TIMEOUT_MS) as unknown as Record<string, unknown>;
     }
     throw new Error(`No local fallback implementation for source ${source}`);
+  }
+
+  private schedulerJitterMs(): number {
+    return Math.floor(Math.random() * (SCHEDULE_JITTER_MAX_MS + 1));
+  }
+
+  private setSchedulerState(source: SourceId, patch: Partial<SourceRefreshState>): void {
+    const current = this.schedulerStates.get(source) ?? {
+      source,
+      consecutiveFailures: 0,
+      retriesInCurrentCycle: 0,
+      totalRefreshes: 0,
+      totalFailures: 0,
+      gaveUpInCurrentCycle: false,
+    };
+    this.schedulerStates.set(source, { ...current, ...patch });
+  }
+
+  private clearScheduledTimer(source: SourceId): void {
+    const timer = this.schedulerTimers.get(source);
+    if (timer) {
+      clearTimeout(timer);
+      this.schedulerTimers.delete(source);
+    }
+  }
+
+  private scheduleSourceRun(
+    source: SourceId,
+    delayMs: number,
+    mode: "refresh" | "retry",
+    cycleStartedAt: number,
+  ): void {
+    this.clearScheduledTimer(source);
+    const nextRunAt = new Date(Date.now() + Math.max(0, delayMs)).toISOString();
+    this.setSchedulerState(source, { nextRunAt });
+    const timer = setTimeout(() => {
+      void this.runScheduledRefresh(source, mode, cycleStartedAt);
+    }, Math.max(0, delayMs));
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+    this.schedulerTimers.set(source, timer);
+  }
+
+  private async warmDefaultSourceCache(source: SourceId): Promise<void> {
+    const payload = await this.fetchLocalFallback(source);
+    await this.cache.set(
+      this.normalizedCacheKey(source, {}, "json"),
+      payload,
+      SCHEDULE_CACHE_TTL_SECONDS,
+      SCHEDULE_CACHE_STALE_SECONDS,
+    );
+  }
+
+  private async runScheduledRefresh(
+    source: SourceId,
+    mode: "refresh" | "retry",
+    cycleStartedAt: number,
+  ): Promise<void> {
+    const state = this.schedulerStates.get(source);
+    if (!state) return;
+
+    try {
+      await this.warmDefaultSourceCache(source);
+      this.setSchedulerState(source, {
+        consecutiveFailures: 0,
+        retriesInCurrentCycle: 0,
+        totalRefreshes: state.totalRefreshes + 1,
+        gaveUpInCurrentCycle: false,
+        lastSuccessAt: new Date().toISOString(),
+        lastError: undefined,
+      });
+
+      const nextDelay = SCHEDULE_REFRESH_INTERVAL_MS + this.schedulerJitterMs();
+      this.scheduleSourceRun(source, nextDelay, "refresh", Date.now());
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const nextFailures = state.consecutiveFailures + 1;
+      const nextRetries = mode === "retry" ? state.retriesInCurrentCycle + 1 : 1;
+      this.setSchedulerState(source, {
+        consecutiveFailures: nextFailures,
+        retriesInCurrentCycle: nextRetries,
+        totalFailures: state.totalFailures + 1,
+        lastFailureAt: new Date().toISOString(),
+        lastError: message,
+      });
+
+      if (nextFailures >= SCHEDULE_MAX_CONSECUTIVE_FAILURES) {
+        // Give up this cycle and wait for the next hourly refresh window.
+        const elapsed = Date.now() - cycleStartedAt;
+        const waitUntilNextCycle = Math.max(0, SCHEDULE_REFRESH_INTERVAL_MS - elapsed) + this.schedulerJitterMs();
+        this.setSchedulerState(source, {
+          gaveUpInCurrentCycle: true,
+          retriesInCurrentCycle: 0,
+        });
+        this.scheduleSourceRun(source, waitUntilNextCycle, "refresh", Date.now());
+        return;
+      }
+
+      this.scheduleSourceRun(source, SCHEDULE_RETRY_INTERVAL_MS, "retry", cycleStartedAt);
+    }
+  }
+
+  startBackgroundRefreshScheduler(): void {
+    if (!this.schedulerEnabled || this.schedulerStarted) {
+      return;
+    }
+    this.schedulerStarted = true;
+    const startedAt = Date.now();
+    for (const source of SOURCE_DEFINITIONS) {
+      this.scheduleSourceRun(source.id, this.schedulerJitterMs(), "refresh", startedAt);
+    }
+  }
+
+  stopBackgroundRefreshScheduler(): void {
+    this.schedulerStarted = false;
+    for (const source of SOURCE_DEFINITIONS) {
+      this.clearScheduledTimer(source.id);
+    }
   }
 
   private async loadWithSWR<T>(
@@ -263,7 +429,7 @@ export class HotService {
     const compatQuery = this.buildCompatQuery(source, queryRecord);
     const noCache = compatQuery.cache === "false";
     const wantsRss = compatQuery.rss === "true";
-    const key = this.cacheKey(source, compatQuery, wantsRss ? "rss" : "json");
+    const key = this.normalizedCacheKey(source, compatQuery, wantsRss ? "rss" : "json");
 
     try {
       const result = await this.loadWithSWR(key, noCache, () => this.fetchLocalFallback(source));
@@ -344,7 +510,7 @@ export class HotService {
     const queryRecord = toRecordFromQuery(query);
     const jsonQuery = this.buildJsonQuery(source, queryRecord);
     const noCache = jsonQuery.cache === "false";
-    const key = this.cacheKey(source, jsonQuery, "json");
+    const key = this.normalizedCacheKey(source, jsonQuery, "json");
 
     try {
       const result = await this.loadWithSWR(key, noCache, () => this.fetchLocalFallback(source));
@@ -443,6 +609,15 @@ export class HotService {
       status: "ok" as const,
       mode: "local-only" as const,
       localSources: SOURCE_DEFINITIONS.map((source) => source.id),
+      scheduler: {
+        enabled: this.schedulerEnabled,
+        started: this.schedulerStarted,
+        refreshIntervalMs: SCHEDULE_REFRESH_INTERVAL_MS,
+        retryIntervalMs: SCHEDULE_RETRY_INTERVAL_MS,
+        maxConsecutiveFailures: SCHEDULE_MAX_CONSECUTIVE_FAILURES,
+        jitterMaxMs: SCHEDULE_JITTER_MAX_MS,
+        sources: Array.from(this.schedulerStates.values()),
+      },
       upstream: {
         ok: true,
         latencyMs: 0,
