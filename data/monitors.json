@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "monitors": [
+    {
+      "id": "ai-track",
+      "name": "AI 赛道监测（示例）",
+      "enabled": true,
+      "sources": ["weibo", "zhihu", "toutiao"],
+      "scheduleMinutes": 5,
+      "rule": {
+        "includeKeywords": ["AI", "大模型", "智能体", "Agent", "OpenAI", "ChatGPT", "Claude"],
+        "excludeKeywords": [],
+        "fields": ["title", "desc"]
+      },
+      "scoring": {
+        "persistenceWindowHours": 24,
+        "persistenceThreshold": 5,
+        "freshnessHalfLifeMinutes": 360
+      },
+      "outputs": {
+        "rss": {
+          "enabled": true,
+          "topN": 30
+        }
+      }
+    }
+  ]
+}
+

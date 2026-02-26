@@ -152,6 +152,20 @@ npm run start
 
 - `data.scheduler.sources[].recentPulls`：最近 3 次拉取记录，包含 `at/status/mode/durationMs/error?`。
 
+## 热榜监测（MVP：选题库 / RSS）
+
+监测配置默认从 `data/monitors.json` 读取；运行状态（话题出现次数等）默认写入 `data/monitor-state.json`（已加入 `.gitignore`，建议挂载 volume 持久化）。
+
+### 接口
+
+- `GET /api/v1/monitors`：查看当前 Monitor 列表
+- `GET /api/v1/monitors/:id/topics?limit=30&minCount=1&refresh=true`：获取候选选题（JSON）
+- `GET /api/v1/monitors/:id/rss?limit=30&minCount=5&refresh=true`：获取候选选题 RSS（XML）
+
+说明：
+- `refresh=true`：请求时先跑一次监测（用于调试/手动触发；生产建议依赖后台 5 分钟调度）。
+- `minCount`：筛选 `last24hSeenCount >= minCount` 的候选选题；`/topics` 与 RSS 若不传默认均使用 Monitor 的 `persistenceThreshold`（当前默认 5）。
+
 ## Docker
 
 ### Build

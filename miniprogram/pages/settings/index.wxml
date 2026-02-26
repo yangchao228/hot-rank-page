@@ -1,0 +1,16 @@
+<view class="page">
+  <view class="card">
+    <view class="title">服务端地址</view>
+    <view class="muted tip">示例：http://212.129.238.55 或 https://your-domain.com</view>
+
+    <input class="input" placeholder="请输入 BASE_URL（不含末尾 /）" value="{{baseUrl}}" bindinput="onInput" />
+
+    <button class="btn primary" bindtap="save">保存</button>
+
+    <view class="muted note">
+      <view>提示：</view>
+      <view>1) 真机/线上通常需要配置“request 合法域名”，建议使用 HTTPS 域名。</view>
+      <view>2) 开发工具可先关闭域名校验（本工程已在 project.config.json 里设置 urlCheck=false）。</view>
+    </view>
+  </view>
+</view>

@@ -17,6 +17,12 @@ const envSchema = z.object({
   REDIS_URL: z.string().default(""),
   REDIS_PREFIX: z.string().default("hot-rank"),
   CORS_ORIGIN: z.string().default("*"),
+  MONITOR_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  MONITORS_CONFIG_PATH: z.string().default("data/monitors.json"),
+  MONITOR_STATE_PATH: z.string().default("data/monitor-state.json"),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,0 +1,33 @@
+.page {
+  padding: 24rpx;
+}
+
+.title {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.tip {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+}
+
+.input {
+  margin-top: 18rpx;
+  padding: 18rpx 16rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #e8e8e8;
+  background: #fafafa;
+}
+
+.note {
+  margin-top: 18rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.primary {
+  margin-top: 18rpx;
+  background: #335dff;
+  color: #fff;
+}

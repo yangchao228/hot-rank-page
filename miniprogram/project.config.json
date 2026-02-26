@@ -1,0 +1,13 @@
+{
+  "description": "hot-rank-page 小程序端",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "minified": true,
+    "postcss": true
+  },
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "hot-rank-mini",
+  "condition": {}
+}

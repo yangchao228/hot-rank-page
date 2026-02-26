@@ -2,13 +2,23 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { HotService } from "./services/hot-service.js";
+import { MonitorService } from "./services/monitor-service.js";
 import { logger } from "./utils/logger.js";
 
 const hotService = new HotService();
 hotService.startBackgroundRefreshScheduler();
 
+const monitorService = new MonitorService({
+  hotService,
+  enabled: env.MONITOR_ENABLED,
+  configPath: env.MONITORS_CONFIG_PATH,
+  statePath: env.MONITOR_STATE_PATH,
+});
+monitorService.start();
+
 const app = createApp({
   hotService,
+  monitorService,
 });
 
 const server = serve(

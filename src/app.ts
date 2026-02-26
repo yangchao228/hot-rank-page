@@ -8,10 +8,12 @@ import { createCompatRouter } from "./routes/compat.js";
 import { createUiRouter } from "./routes/ui.js";
 import { createV1Router } from "./routes/v1.js";
 import { HotService } from "./services/hot-service.js";
+import type { MonitorService } from "./services/monitor-service.js";
 import { logger } from "./utils/logger.js";
 
 interface CreateAppOptions {
   hotService?: HotService;
+  monitorService?: MonitorService;
   rateLimitWindowMs?: number;
   rateLimitMax?: number;
   aggregateRateLimitMax?: number;
@@ -87,7 +89,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
   });
 
   app.route("/", createUiRouter());
-  app.route("/api/v1", createV1Router(service));
+  app.route("/api/v1", createV1Router(service, options.monitorService));
   app.route("/", createCompatRouter(service));
 
   app.notFound((c) => {

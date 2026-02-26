@@ -1,0 +1,163 @@
+.page {
+  padding: 24rpx;
+}
+
+.header {
+  margin-bottom: 20rpx;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.link {
+  color: #335dff;
+  font-weight: 600;
+}
+
+.meta {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+}
+
+.controls {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
+  flex-wrap: wrap;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.label {
+  font-size: 22rpx;
+}
+
+.picker {
+  padding: 10rpx 14rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #e8e8e8;
+  background: #fafafa;
+}
+
+.warn {
+  margin-top: 16rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background: #fff7e6;
+  color: #8c5a00;
+  font-size: 24rpx;
+}
+
+.warn-list {
+  font-weight: 600;
+}
+
+.error {
+  margin-top: 16rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background: #fff1f0;
+  color: #a8071a;
+  font-size: 24rpx;
+}
+
+.source-panel {
+  margin-bottom: 20rpx;
+}
+
+.subTitle {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 16rpx;
+  flex-wrap: wrap;
+}
+
+.primary {
+  background: #335dff;
+  color: #fff;
+}
+
+.source-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.source-item {
+  display: flex;
+  gap: 12rpx;
+  align-items: flex-start;
+  padding: 14rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #f0f0f0;
+}
+
+.source-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.source-title {
+  font-weight: 700;
+}
+
+.source-desc {
+  font-size: 22rpx;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.loading,
+.empty {
+  text-align: center;
+  margin: 40rpx 0;
+}
+
+.item-title {
+  font-weight: 700;
+}
+
+.sub {
+  margin-top: 10rpx;
+  justify-content: flex-start;
+}
+
+.hot {
+  margin-left: 10rpx;
+  font-size: 24rpx;
+  color: #111;
+}
+
+.time {
+  margin-left: auto;
+  font-size: 22rpx;
+}
+
+.desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+}

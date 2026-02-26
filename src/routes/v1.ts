@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type { HotService } from "../services/hot-service.js";
+import type { MonitorService } from "../services/monitor-service.js";
+import { createMonitorRouter } from "./monitors.js";
 
-export function createV1Router(service: HotService): Hono {
+export function createV1Router(service: HotService, monitorService?: MonitorService): Hono {
   const app = new Hono();
 
   app.get("/sources", (c) => {
@@ -24,6 +26,10 @@ export function createV1Router(service: HotService): Hono {
     const response = await service.getStandardFeed(source, query);
     return c.json(response, 200);
   });
+
+  if (monitorService) {
+    app.route("/monitors", createMonitorRouter(monitorService));
+  }
 
   return app;
 }

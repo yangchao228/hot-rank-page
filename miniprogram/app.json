@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "pages/aggregate/index",
+    "pages/settings/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "聚合热榜",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundTextStyle": "light"
+  }
+}

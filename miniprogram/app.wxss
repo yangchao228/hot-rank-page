@@ -1,0 +1,30 @@
+page {
+  background: #f7f7f7;
+  color: #111;
+  font-size: 28rpx;
+  line-height: 1.4;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.06);
+}
+
+.muted {
+  color: #666;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  background: #eef2ff;
+  color: #3b5bdb;
+}
+
+.btn {
+  border-radius: 12rpx;
+}
