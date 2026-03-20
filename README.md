@@ -192,6 +192,12 @@ docker compose up -d --build
 npm run test:run
 ```
 
+CI 全量校验：
+
+```bash
+npm run verify
+```
+
 当前包含：
 
 - 缓存状态与刷新锁测试
